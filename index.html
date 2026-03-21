@@ -85,6 +85,10 @@
   .empty-icon { font-size: 40px; margin-bottom: 12px; opacity: 0.4; }
   .empty-text { font-size: 14px; line-height: 1.6; }
   .loading-state { grid-column: 1 / -1; text-align: center; padding: 48px 24px; color: var(--muted); font-size: 14px; }
+  .tabs { display: flex; gap: 6px; padding: 0 24px 16px; }
+  .tab { flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500; color: var(--muted); cursor: pointer; transition: all 0.2s; letter-spacing: 0.3px; }
+  .tab.active { background: var(--surface2); border-color: rgba(232,197,71,0.4); color: var(--accent); }
+  .tab:hover:not(.active) { border-color: rgba(255,255,255,0.15); color: var(--text); }
 </style>
 </head>
 <body>
@@ -99,6 +103,10 @@
       Refresh
     </button>
   </header>
+  <div class="tabs">
+    <button class="tab active" id="tab-family" onclick="switchList('family')">Family</button>
+    <button class="tab" id="tab-kids" onclick="switchList('kids')">Kids</button>
+  </div>
   <div class="search-wrap">
     <input class="search-input" id="searchInput" placeholder="Search for a movie..." autocomplete="off" autocorrect="off">
     <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
@@ -143,6 +151,7 @@ function parseStreaming(val) {
 
 
 let movies = [];
+let activeList = 'family';
 let searchTimer = null;
 let isRefreshing = false;
 
@@ -158,12 +167,12 @@ function showStatus(msg, type) {
 
 // ── Google Sheet API ──────────────────────────────────────────────────────────
 async function sheetGet() {
-  const res = await fetch(SCRIPT_URL + '?action=get', { redirect: 'follow' });
+  const res = await fetch(SCRIPT_URL + '?action=get&list=' + activeList, { redirect: 'follow' });
   return res.json();
 }
 
 async function sheetAdd(movie) {
-  await fetch(SCRIPT_URL + '?action=add', {
+  await fetch(SCRIPT_URL + '?action=add&list=' + activeList, {
     method: 'POST',
     mode: 'no-cors',
     body: JSON.stringify(movie)
@@ -171,7 +180,7 @@ async function sheetAdd(movie) {
 }
 
 async function sheetUpdate(movie) {
-  await fetch(SCRIPT_URL + '?action=update', {
+  await fetch(SCRIPT_URL + '?action=update&list=' + activeList, {
     method: 'POST',
     mode: 'no-cors',
     body: JSON.stringify(movie)
@@ -179,11 +188,25 @@ async function sheetUpdate(movie) {
 }
 
 async function sheetRemove(movie) {
-  await fetch(SCRIPT_URL + '?action=remove', {
+  await fetch(SCRIPT_URL + '?action=remove&list=' + activeList, {
     method: 'POST',
     mode: 'no-cors',
     body: JSON.stringify(movie)
   });
+}
+
+// ── Switch list ───────────────────────────────────────────────────────────────
+async function switchList(list) {
+  if (list === activeList) return;
+  activeList = list;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + list).classList.add('active');
+  movies = [];
+  document.getElementById('watchlist').innerHTML = '<div class="loading-state">Loading your list...</div>';
+  hideResults();
+  document.getElementById('searchInput').value = '';
+  isRefreshing = false;
+  await loadList();
 }
 
 // ── Load list ─────────────────────────────────────────────────────────────────
