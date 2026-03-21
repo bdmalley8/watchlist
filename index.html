@@ -130,7 +130,18 @@ const SERVICE_MAP = {
   peacock:  { label: 'Peacock',   cls: 'badge-peacock' },
 };
 
-let movies = [];
+function parseStreaming(val) {
+  if (!val) return [];
+  if (typeof val === 'string') {
+    // Try JSON first
+    try { return JSON.parse(val); } catch(e) {}
+    // Fall back to plain comma-separated IDs e.g. "prime, hbo, hulu"
+    return val.split(',').map(s => s.trim()).filter(Boolean).map(id => ({ id, type: 'subscription' }));
+  }
+  return val;
+}
+
+
 let searchTimer = null;
 let isRefreshing = false;
 
@@ -181,8 +192,8 @@ async function loadList() {
       title: r.title || '',
       year: r.year || '',
       posterUrl: r.posterUrl || '',
-      streaming: r.streaming ? JSON.parse(r.streaming) : [],
-      streamingRaw: r.streaming ? JSON.parse(r.streaming) : [],
+      streaming: parseStreaming(r.streaming),
+      streamingRaw: parseStreaming(r.streaming),
       lastChecked: r.lastChecked || null,
     }));
     renderWatchlist();
