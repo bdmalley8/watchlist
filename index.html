@@ -142,6 +142,7 @@ function parseStreaming(val) {
 }
 
 
+let movies = [];
 let searchTimer = null;
 let isRefreshing = false;
 
@@ -162,17 +163,17 @@ async function sheetGet() {
 }
 
 async function sheetAdd(movie) {
-  const res = await fetch(SCRIPT_URL + '?action=add', {
+  await fetch(SCRIPT_URL + '?action=add', {
     method: 'POST',
-    redirect: 'follow',
+    mode: 'no-cors',
     body: JSON.stringify(movie)
   });
-  return res.json();
 }
 
 async function sheetUpdate(movie) {
   await fetch(SCRIPT_URL + '?action=update', {
     method: 'POST',
+    mode: 'no-cors',
     body: JSON.stringify(movie)
   });
 }
@@ -180,6 +181,7 @@ async function sheetUpdate(movie) {
 async function sheetRemove(movie) {
   await fetch(SCRIPT_URL + '?action=remove', {
     method: 'POST',
+    mode: 'no-cors',
     body: JSON.stringify(movie)
   });
 }
@@ -292,14 +294,17 @@ async function addMovie(title, year, posterPath) {
   movie.streaming = services;
   movie.lastChecked = new Date().toISOString().split('T')[0];
 
-  await sheetAdd({
-    title, year, posterUrl,
-    streaming: JSON.stringify(services),
-    lastChecked: movie.lastChecked
-  });
-
+  try {
+    await sheetAdd({
+      title, year, posterUrl,
+      streaming: JSON.stringify(services),
+      lastChecked: movie.lastChecked
+    });
+    showStatus(title + ' added', 'success');
+  } catch(e) {
+    showStatus('Saved locally — sheet write failed', 'error');
+  }
   renderWatchlist();
-  showStatus(title + ' added', 'success');
 }
 
 // ── Remove movie ──────────────────────────────────────────────────────────────
