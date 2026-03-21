@@ -64,7 +64,7 @@
   .movie-title { font-weight: 500; font-size: 13px; line-height: 1.3; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .movie-year { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
   .streaming-badges { display: flex; flex-wrap: wrap; gap: 4px; min-height: 20px; }
-  .badge { font-size: 9px; font-weight: 500; letter-spacing: 0.3px; padding: 3px 6px; border-radius: 4px; text-transform: uppercase; }
+  .badge { font-size: 9px; font-weight: 500; letter-spacing: 0.3px; padding: 3px 6px; border-radius: 4px; text-transform: uppercase; display: flex; align-items: center; gap: 3px; }
   .badge-netflix { background: rgba(229,9,20,0.2); color: #e55b64; }
   .badge-hbo { background: rgba(110,70,220,0.2); color: #9b7fe8; }
   .badge-hulu { background: rgba(28,218,117,0.2); color: #3dba7e; }
@@ -73,6 +73,7 @@
   .badge-prime { background: rgba(0,168,225,0.2); color: #4db8e0; }
   .badge-peacock { background: rgba(255,140,0,0.2); color: #e8a040; }
   .badge-none { background: rgba(255,255,255,0.05); color: var(--muted); }
+  .badge-cost { font-size: 8px; opacity: 0.8; font-weight: 700; }
   .remove-btn { position: absolute; top: 8px; right: 8px; width: 24px; height: 24px; background: rgba(0,0,0,0.6); border: none; border-radius: 50%; color: rgba(255,255,255,0.6); cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.15s; backdrop-filter: blur(4px); }
   .movie-card:hover .remove-btn { opacity: 1; }
   .checking-badge { font-size: 10px; color: var(--muted); font-style: italic; }
@@ -90,7 +91,7 @@
 <div class="app">
   <header>
     <div class="header-left">
-      <div class="logo">Watch<span>.</span></div>
+      <div class="logo">Malley <span>Movies</span></div>
       <div class="tagline">Your family's streaming list</div>
     </div>
     <button class="refresh-btn" id="refreshBtn" onclick="refreshAll()">
@@ -114,9 +115,10 @@
 <div class="status" id="status"></div>
 
 <script>
-const API_URL   = 'https://script.google.com/macros/s/AKfycbyEvRpID_ABmEbtbF9u8gcUSa3oCDc71Yg_hDOHByKcIoRaAoWdd9IEHpWtwX0IJ0kCbQ/exec';
-const RAPID_KEY = '6843182acdmsh3606361dc74ed24p1b3afejsnf8eccf80e039';
-const TMDB_KEY  = 'cd13f611fe266eabec6fd4bd6495b74e';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyEvRpID_ABmEbtbF9u8gcUSa3oCDc71Yg_hDOHByKcIoRaAoWdd9IEHpWtwX0IJ0kCbQ/exec';
+const RAPID_KEY  = '6843182acdmsh3606361dc74ed24p1b3afejsnf8eccf80e039';
+const TMDB_KEY   = 'cd13f611fe266eabec6fd4bd6495b74e';
+const REFRESH_HOURS = 24;
 
 const SERVICE_MAP = {
   netflix:  { label: 'Netflix',   cls: 'badge-netflix' },
@@ -142,18 +144,32 @@ function showStatus(msg, type) {
   statusTimer = setTimeout(() => el.classList.remove('visible'), 3500);
 }
 
-// ── Sheet API ─────────────────────────────────────────────────────────────────
+// ── Google Sheet API ──────────────────────────────────────────────────────────
 async function sheetGet() {
-  const res = await fetch(API_URL + '?action=get');
+  const res = await fetch(SCRIPT_URL + '?action=get');
   return res.json();
 }
 
-async function sheetPost(action, data) {
-  const res = await fetch(API_URL + '?action=' + action, {
+async function sheetAdd(movie) {
+  const res = await fetch(SCRIPT_URL + '?action=add', {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify(movie)
   });
   return res.json();
+}
+
+async function sheetUpdate(movie) {
+  await fetch(SCRIPT_URL + '?action=update', {
+    method: 'POST',
+    body: JSON.stringify(movie)
+  });
+}
+
+async function sheetRemove(movie) {
+  await fetch(SCRIPT_URL + '?action=remove', {
+    method: 'POST',
+    body: JSON.stringify(movie)
+  });
 }
 
 // ── Load list ─────────────────────────────────────────────────────────────────
@@ -164,15 +180,15 @@ async function loadList() {
       title: r.title || '',
       year: r.year || '',
       posterUrl: r.posterUrl || '',
-      streaming: r.streaming ? r.streaming.split(',').map(s => s.trim()).filter(Boolean) : [],
-      lastChecked: r.lastChecked || '',
+      streaming: r.streaming ? JSON.parse(r.streaming) : [],
+      streamingRaw: r.streaming ? JSON.parse(r.streaming) : [],
+      lastChecked: r.lastChecked || null,
     }));
     renderWatchlist();
-    refreshStale();
+    refreshAll(false);
   } catch(e) {
-    console.error('Load error:', e);
     document.getElementById('watchlist').innerHTML =
-      '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Could not load list.<br>Check your connection.</div></div>';
+      '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Could not load list.<br>Check your Apps Script deployment.</div></div>';
   }
 }
 
@@ -190,7 +206,11 @@ async function getStreamingAvailability(title) {
     const services = [];
     for (const opt of options) {
       const id = opt?.service?.id;
-      if (id && SERVICE_MAP[id] && !seen.has(id)) { seen.add(id); services.push(id); }
+      const type = opt?.type || 'subscription';
+      if (id && SERVICE_MAP[id] && !seen.has(id)) {
+        seen.add(id);
+        services.push({ id, type });
+      }
     }
     return services;
   } catch(e) { return []; }
@@ -251,7 +271,7 @@ async function addMovie(title, year, posterPath) {
     showStatus(title + ' is already on your list'); return;
   }
   const posterUrl = posterPath ? 'https://image.tmdb.org/t/p/w342' + posterPath : '';
-  const movie = { title, year, posterUrl, streaming: null, lastChecked: '' };
+  const movie = { title, year, posterUrl, streaming: null, lastChecked: null };
   movies.unshift(movie);
   renderWatchlist();
   showStatus('Adding ' + title + '...');
@@ -260,10 +280,10 @@ async function addMovie(title, year, posterPath) {
   movie.streaming = services;
   movie.lastChecked = new Date().toISOString().split('T')[0];
 
-  await sheetPost('add', {
+  await sheetAdd({
     title, year, posterUrl,
-    streaming: services.join(', '),
-    lastChecked: movie.lastChecked,
+    streaming: JSON.stringify(services),
+    lastChecked: movie.lastChecked
   });
 
   renderWatchlist();
@@ -275,35 +295,28 @@ async function removeMovie(i) {
   const movie = movies[i];
   movies.splice(i, 1);
   renderWatchlist();
-  await sheetPost('remove', { title: movie.title });
+  await sheetRemove({ title: movie.title });
 }
 
-// ── Refresh stale (silent, on load) ──────────────────────────────────────────
-async function refreshStale() {
+// ── Refresh ───────────────────────────────────────────────────────────────────
+async function refreshAll(force) {
+  if (isRefreshing) return;
+  isRefreshing = true;
+  document.getElementById('refreshBtn').classList.add('spinning');
   const today = new Date().toISOString().split('T')[0];
-  const stale = movies.filter(m => !m.lastChecked || m.lastChecked < today);
-  if (!stale.length) return;
+  const stale = movies.filter(m => force || !m.lastChecked || m.lastChecked < today);
+  if (!stale.length) {
+    showStatus('All up to date', 'success');
+    isRefreshing = false;
+    document.getElementById('refreshBtn').classList.remove('spinning');
+    return;
+  }
+  showStatus('Checking ' + stale.length + ' movie' + (stale.length !== 1 ? 's' : '') + '...');
   for (const movie of stale) {
     const services = await getStreamingAvailability(movie.title);
     movie.streaming = services;
     movie.lastChecked = today;
-    await sheetPost('update', { title: movie.title, streaming: services.join(', '), lastChecked: today });
-  }
-  renderWatchlist();
-}
-
-// ── Refresh all (manual button) ───────────────────────────────────────────────
-async function refreshAll() {
-  if (isRefreshing) return;
-  isRefreshing = true;
-  document.getElementById('refreshBtn').classList.add('spinning');
-  showStatus('Refreshing ' + movies.length + ' movie' + (movies.length !== 1 ? 's' : '') + '...');
-  const today = new Date().toISOString().split('T')[0];
-  for (const movie of movies) {
-    const services = await getStreamingAvailability(movie.title);
-    movie.streaming = services;
-    movie.lastChecked = today;
-    await sheetPost('update', { title: movie.title, streaming: services.join(', '), lastChecked: today });
+    await sheetUpdate({ title: movie.title, streaming: JSON.stringify(services), lastChecked: today });
   }
   renderWatchlist();
   showStatus('All updated', 'success');
@@ -312,6 +325,13 @@ async function refreshAll() {
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
+function costLabel(type) {
+  if (type === 'rent') return '<span class="badge-cost">RENT</span>';
+  if (type === 'buy') return '<span class="badge-cost">BUY</span>';
+  if (type === 'free') return '<span class="badge-cost">FREE</span>';
+  return '';
+}
+
 function renderWatchlist() {
   const el = document.getElementById('watchlist');
   const countEl = document.getElementById('movieCount');
@@ -321,16 +341,35 @@ function renderWatchlist() {
     el.innerHTML = '<div class="empty-state"><div class="empty-icon">🎬</div><div class="empty-text">Search for a movie above<br>to add it to your list</div></div>';
     return;
   }
+
   el.innerHTML = movies.map((m, i) => {
     const poster = m.posterUrl
       ? '<img class="movie-poster" src="' + m.posterUrl + '" alt="' + m.title + '" loading="lazy">'
       : '<div class="movie-poster-placeholder">🎬</div>';
+
     let badges = '';
-    if (m.streaming === null) badges = '<span class="checking-badge">Checking...</span>';
-    else if (!m.streaming.length) badges = '<span class="badge badge-none">Not streaming</span>';
-    else badges = m.streaming.map(s => { const svc = SERVICE_MAP[s]; return svc ? '<span class="badge ' + svc.cls + '">' + svc.label + '</span>' : ''; }).join('');
-    return '<div class="movie-card"><button class="remove-btn" onclick="removeMovie(' + i + ')">×</button>' + poster +
-      '<div class="movie-info"><div class="movie-title">' + m.title + '</div><div class="movie-year">' + m.year + '</div><div class="streaming-badges">' + badges + '</div></div></div>';
+    if (m.streaming === null) {
+      badges = '<span class="checking-badge">Checking...</span>';
+    } else if (!m.streaming || !m.streaming.length) {
+      badges = '<span class="badge badge-none">Not streaming</span>';
+    } else {
+      badges = m.streaming.map(s => {
+        const id = typeof s === 'object' ? s.id : s;
+        const type = typeof s === 'object' ? s.type : 'subscription';
+        const svc = SERVICE_MAP[id];
+        if (!svc) return '';
+        return '<span class="badge ' + svc.cls + '">' + svc.label + costLabel(type) + '</span>';
+      }).join('');
+    }
+
+    return '<div class="movie-card">' +
+      '<button class="remove-btn" onclick="removeMovie(' + i + ')">×</button>' +
+      poster +
+      '<div class="movie-info">' +
+        '<div class="movie-title">' + m.title + '</div>' +
+        '<div class="movie-year">' + m.year + '</div>' +
+        '<div class="streaming-badges">' + badges + '</div>' +
+      '</div></div>';
   }).join('');
 }
 
@@ -346,7 +385,6 @@ document.addEventListener('click', e => {
   if (!e.target.closest('.search-wrap') && !e.target.closest('.results')) hideResults();
 });
 
-// ── Init ──────────────────────────────────────────────────────────────────────
 loadList();
 </script>
 </body>
