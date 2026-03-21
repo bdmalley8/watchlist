@@ -115,7 +115,7 @@
 <div class="status" id="status"></div>
 
 <script>
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyEvRpID_ABmEbtbF9u8gcUSa3oCDc71Yg_hDOHByKcIoRaAoWdd9IEHpWtwX0IJ0kCbQ/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxRFs27KO-yDiZImwPTEZHFbefBJ_5DSaMQDebkQCzSysfVR-46xV2KFOzWUm43KWmGtQ/exec';
 const RAPID_KEY  = '6843182acdmsh3606361dc74ed24p1b3afejsnf8eccf80e039';
 const TMDB_KEY   = 'cd13f611fe266eabec6fd4bd6495b74e';
 const REFRESH_HOURS = 24;
@@ -146,13 +146,14 @@ function showStatus(msg, type) {
 
 // ── Google Sheet API ──────────────────────────────────────────────────────────
 async function sheetGet() {
-  const res = await fetch(SCRIPT_URL + '?action=get');
+  const res = await fetch(SCRIPT_URL + '?action=get', { redirect: 'follow' });
   return res.json();
 }
 
 async function sheetAdd(movie) {
   const res = await fetch(SCRIPT_URL + '?action=add', {
     method: 'POST',
+    redirect: 'follow',
     body: JSON.stringify(movie)
   });
   return res.json();
