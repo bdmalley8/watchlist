@@ -27,16 +27,21 @@
   body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 15px; min-height: 100vh; overflow-x: hidden; }
   body::before { content: ''; position: fixed; inset: 0; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E"); pointer-events: none; z-index: 9999; opacity: 0.4; }
   .app { max-width: 480px; margin: 0 auto; padding: 0 0 80px; min-height: 100vh; }
-  header { padding: 52px 24px 24px; position: relative; }
+  header { padding: 52px 24px 20px; position: relative; display: flex; align-items: flex-start; justify-content: space-between; }
+  .header-left {}
   .logo { font-family: 'Bebas Neue', sans-serif; font-size: 42px; letter-spacing: 3px; color: var(--text); line-height: 1; }
   .logo span { color: var(--accent); }
   .tagline { font-size: 12px; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; margin-top: 4px; }
+  .refresh-btn { background: none; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); padding: 8px 12px; cursor: pointer; font-size: 13px; font-family: 'DM Sans', sans-serif; transition: border-color 0.2s, color 0.2s; margin-top: 8px; display: flex; align-items: center; gap: 6px; }
+  .refresh-btn:hover { border-color: rgba(232,197,71,0.4); color: var(--accent); }
+  .refresh-btn.spinning svg { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
   .search-wrap { padding: 0 24px 8px; position: relative; }
   .search-input { width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 48px 14px 18px; color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 15px; outline: none; transition: border-color 0.2s; }
   .search-input::placeholder { color: var(--muted); }
   .search-input:focus { border-color: rgba(232,197,71,0.4); }
   .search-icon { position: absolute; right: 38px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
-  .results { margin: 6px 24px 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; display: none; }
+  .results { margin: 6px 24px 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; display: none; position: relative; z-index: 10; }
   .results.visible { display: block; }
   .result-item { display: flex; align-items: center; gap: 14px; padding: 12px 16px; cursor: pointer; border-bottom: 1px solid var(--border); transition: background 0.15s; -webkit-tap-highlight-color: transparent; user-select: none; }
   .result-item:last-child { border-bottom: none; }
@@ -48,7 +53,8 @@
   .result-year { font-size: 12px; color: var(--muted); margin-top: 2px; }
   .result-add { font-size: 11px; font-weight: 500; color: var(--accent); letter-spacing: 0.5px; flex-shrink: 0; pointer-events: none; }
   .no-results { padding: 16px; color: var(--muted); font-size: 13px; text-align: center; }
-  .section-label { font-family: 'Bebas Neue', sans-serif; font-size: 13px; letter-spacing: 3px; color: var(--muted); padding: 24px 24px 12px; }
+  .section-label { font-family: 'Bebas Neue', sans-serif; font-size: 13px; letter-spacing: 3px; color: var(--muted); padding: 24px 24px 12px; display: flex; align-items: center; justify-content: space-between; }
+  .movie-count { font-family: 'DM Sans', sans-serif; font-size: 12px; letter-spacing: 0; color: var(--muted); }
   .watchlist { padding: 0 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   .movie-card { background: var(--surface); border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); position: relative; animation: fadeIn 0.3s ease; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
@@ -77,35 +83,42 @@
   .empty-state { grid-column: 1 / -1; text-align: center; padding: 48px 24px; color: var(--muted); }
   .empty-icon { font-size: 40px; margin-bottom: 12px; opacity: 0.4; }
   .empty-text { font-size: 14px; line-height: 1.6; }
+  .loading-state { grid-column: 1 / -1; text-align: center; padding: 48px 24px; color: var(--muted); font-size: 14px; }
 </style>
 </head>
 <body>
 <div class="app">
   <header>
-    <div class="logo">Watch<span>.</span></div>
-    <div class="tagline">Your family's streaming list</div>
+    <div class="header-left">
+      <div class="logo">Watch<span>.</span></div>
+      <div class="tagline">Your family's streaming list</div>
+    </div>
+    <button class="refresh-btn" id="refreshBtn" onclick="refreshAll()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+      Refresh
+    </button>
   </header>
   <div class="search-wrap">
     <input class="search-input" id="searchInput" placeholder="Search for a movie..." autocomplete="off" autocorrect="off">
     <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
   </div>
   <div class="results" id="results"></div>
-  <div class="section-label">On Your List</div>
+  <div class="section-label">
+    <span>On Your List</span>
+    <span class="movie-count" id="movieCount"></span>
+  </div>
   <div class="watchlist" id="watchlist">
-    <div class="empty-state">
-      <div class="empty-icon">🎬</div>
-      <div class="empty-text">Search for a movie above<br>to add it to your list</div>
-    </div>
+    <div class="loading-state">Loading your list...</div>
   </div>
 </div>
 <div class="status" id="status"></div>
+
 <script>
 const NOTION_TOKEN = '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';
 const DATABASE_ID  = '32a61d319fd18026b226e4425d2c282b';
 const RAPID_KEY    = '6843182acdmsh3606361dc74ed24p1b3afejsnf8eccf80e039';
 const TMDB_KEY     = 'cd13f611fe266eabec6fd4bd6495b74e';
-
-const LIST_KEY = 'watchlist_movies';
+const REFRESH_HOURS = 24;
 
 const SERVICE_MAP = {
   netflix:  { label: 'Netflix',   cls: 'badge-netflix' },
@@ -117,18 +130,16 @@ const SERVICE_MAP = {
   peacock:  { label: 'Peacock',   cls: 'badge-peacock' },
 };
 
+const COL_MAP = {
+  netflix: 'Netflix', hbo: 'Max', hulu: 'Hulu',
+  disney: 'Disney+', apple: 'AppleTV', prime: 'Prime Video', peacock: 'Peacock'
+};
+
 let movies = [];
 let searchTimer = null;
+let isRefreshing = false;
 
-function loadMovies() {
-  try { movies = JSON.parse(localStorage.getItem(LIST_KEY) || '[]'); } catch(e) { movies = []; }
-  renderWatchlist();
-}
-
-function saveMovies() {
-  localStorage.setItem(LIST_KEY, JSON.stringify(movies));
-}
-
+// ── Status ────────────────────────────────────────────────────────────────────
 let statusTimer = null;
 function showStatus(msg, type) {
   const el = document.getElementById('status');
@@ -138,79 +149,51 @@ function showStatus(msg, type) {
   statusTimer = setTimeout(() => el.classList.remove('visible'), 3000);
 }
 
-async function searchMovies(query) {
-  if (!query.trim()) { hideResults(); return; }
-  const url = 'https://api.themoviedb.org/3/search/movie?api_key=' + TMDB_KEY + '&query=' + encodeURIComponent(query) + '&language=en-US&page=1';
+// ── Notion API ────────────────────────────────────────────────────────────────
+async function notionRequest(method, path, data) {
+  const res = await fetch('https://api.notion.com/v1' + path, {
+    method,
+    headers: {
+      'Authorization': 'Bearer ' + NOTION_TOKEN,
+      'Notion-Version': '2022-06-28',
+      'Content-Type': 'application/json',
+    },
+    body: data ? JSON.stringify(data) : undefined,
+  });
+  return res.json();
+}
+
+// ── Load list from Notion ─────────────────────────────────────────────────────
+async function loadFromNotion() {
   try {
-    const res = await fetch(url);
-    const data = await res.json();
-    showResults((data.results || []).slice(0, 4));
+    const data = await notionRequest('POST', '/databases/' + DATABASE_ID + '/query', {
+      sorts: [{ timestamp: 'created_time', direction: 'descending' }]
+    });
+    if (!data.results) return [];
+    return data.results.map(page => {
+      const props = page.properties;
+      const title = props.Title?.title?.[0]?.plain_text || '';
+      const lastChecked = props['Last Checked']?.date?.start || null;
+      const availableOn = props['Available On']?.rich_text?.[0]?.plain_text || '';
+      const posterUrl = props['Poster']?.url || '';
+      const year = props['Year']?.rich_text?.[0]?.plain_text || '';
+
+      // Parse streaming from Available On text
+      const streaming = availableOn && availableOn !== 'Not currently streaming'
+        ? Object.entries(SERVICE_MAP)
+            .filter(([id, svc]) => availableOn.includes(svc.label))
+            .map(([id]) => id)
+        : (availableOn === 'Not currently streaming' ? [] : null);
+
+      return { notionId: page.id, title, year, posterUrl, streaming, lastChecked };
+    }).filter(m => m.title);
   } catch(e) {
-    showStatus('Search failed', 'error');
+    console.error('Notion load error:', e);
+    return null;
   }
 }
 
-function showResults(results) {
-  const el = document.getElementById('results');
-  if (!results.length) {
-    el.innerHTML = '<div class="no-results">No results found</div>';
-    el.classList.add('visible');
-    return;
-  }
-  el.innerHTML = results.map((m, i) => {
-    const year = m.release_date ? m.release_date.substring(0,4) : '';
-    const poster = m.poster_path
-      ? '<img class="result-poster" src="https://image.tmdb.org/t/p/w92' + m.poster_path + '" alt="">'
-      : '<div class="result-poster-placeholder">🎬</div>';
-    return '<div class="result-item" data-idx="' + i + '">' + poster +
-      '<div class="result-info"><div class="result-title">' + m.title + '</div><div class="result-year">' + year + '</div></div>' +
-      '<div class="result-add">+ Add</div></div>';
-  }).join('');
-
-  // Store results for click lookup
-  el._results = results;
-  el.classList.add('visible');
-}
-
-function hideResults() {
-  const el = document.getElementById('results');
-  el.classList.remove('visible');
-  el._results = [];
-}
-
-// Use event delegation on results container — fixes Safari click issue
-document.getElementById('results').addEventListener('click', function(e) {
-  const item = e.target.closest('.result-item');
-  if (!item) return;
-  const idx = parseInt(item.dataset.idx);
-  const results = this._results || [];
-  if (!results[idx]) return;
-  const m = results[idx];
-  const year = m.release_date ? m.release_date.substring(0,4) : '';
-  addMovie(m.id, m.title, year, m.poster_path || '');
-});
-
-async function addMovie(tmdbId, title, year, posterPath) {
-  hideResults();
-  document.getElementById('searchInput').value = '';
-  if (movies.find(m => m.tmdbId === tmdbId)) {
-    showStatus(title + ' is already on your list'); return;
-  }
-  const posterUrl = posterPath ? 'https://image.tmdb.org/t/p/w342' + posterPath : '';
-  const movie = { tmdbId, title, year, posterUrl, streaming: null, notionId: null };
-  movies.unshift(movie);
-  saveMovies();
-  renderWatchlist();
-  showStatus('Adding ' + title + '...');
-  const services = await getStreamingAvailability(title);
-  movie.streaming = services;
-  const notionId = await addToNotion(title, year, posterUrl, services);
-  movie.notionId = notionId;
-  saveMovies();
-  renderWatchlist();
-  showStatus(title + ' added', 'success');
-}
-
+// ── Streaming API ─────────────────────────────────────────────────────────────
 async function getStreamingAvailability(title) {
   const params = new URLSearchParams({ title, country: 'us', show_type: 'movie', output_language: 'en' });
   try {
@@ -230,31 +213,147 @@ async function getStreamingAvailability(title) {
   } catch(e) { return []; }
 }
 
-async function addToNotion(title, year, posterUrl, services) {
+// ── TMDB Search ───────────────────────────────────────────────────────────────
+async function searchMovies(query) {
+  if (!query.trim()) { hideResults(); return; }
+  try {
+    const res = await fetch('https://api.themoviedb.org/3/search/movie?api_key=' + TMDB_KEY + '&query=' + encodeURIComponent(query) + '&language=en-US&page=1');
+    const data = await res.json();
+    showResults((data.results || []).slice(0, 4));
+  } catch(e) { showStatus('Search failed', 'error'); }
+}
+
+function showResults(results) {
+  const el = document.getElementById('results');
+  if (!results.length) {
+    el.innerHTML = '<div class="no-results">No results found</div>';
+    el.classList.add('visible');
+    return;
+  }
+  el.innerHTML = results.map((m, i) => {
+    const year = m.release_date ? m.release_date.substring(0,4) : '';
+    const poster = m.poster_path
+      ? '<img class="result-poster" src="https://image.tmdb.org/t/p/w92' + m.poster_path + '" alt="">'
+      : '<div class="result-poster-placeholder">🎬</div>';
+    return '<div class="result-item" data-idx="' + i + '">' + poster +
+      '<div class="result-info"><div class="result-title">' + m.title + '</div><div class="result-year">' + year + '</div></div>' +
+      '<div class="result-add">+ Add</div></div>';
+  }).join('');
+  el._results = results;
+  el.classList.add('visible');
+}
+
+function hideResults() {
+  const el = document.getElementById('results');
+  el.classList.remove('visible');
+  el._results = [];
+}
+
+document.getElementById('results').addEventListener('click', function(e) {
+  const item = e.target.closest('.result-item');
+  if (!item) return;
+  const idx = parseInt(item.dataset.idx);
+  const results = this._results || [];
+  if (!results[idx]) return;
+  const m = results[idx];
+  const year = m.release_date ? m.release_date.substring(0,4) : '';
+  addMovie(m.id, m.title, year, m.poster_path || '');
+});
+
+// ── Add movie ─────────────────────────────────────────────────────────────────
+async function addMovie(tmdbId, title, year, posterPath) {
+  hideResults();
+  document.getElementById('searchInput').value = '';
+  if (movies.find(m => m.title.toLowerCase() === title.toLowerCase())) {
+    showStatus(title + ' is already on your list'); return;
+  }
+  const posterUrl = posterPath ? 'https://image.tmdb.org/t/p/w342' + posterPath : '';
+  const movie = { notionId: null, title, year, posterUrl, streaming: null, lastChecked: null };
+  movies.unshift(movie);
+  renderWatchlist();
+  showStatus('Adding ' + title + '...');
+
+  const services = await getStreamingAvailability(title);
+  movie.streaming = services;
+  movie.lastChecked = new Date().toISOString().split('T')[0];
+
+  const notionId = await writeToNotion(null, title, year, posterUrl, services);
+  movie.notionId = notionId;
+  renderWatchlist();
+  showStatus(title + ' added', 'success');
+}
+
+// ── Write to Notion ───────────────────────────────────────────────────────────
+async function writeToNotion(pageId, title, year, posterUrl, services) {
   const names = services.map(s => SERVICE_MAP[s]?.label).filter(Boolean);
   const availableText = names.length ? names.join(', ') : 'Not currently streaming';
-  const colMap = { netflix:'Netflix', hbo:'Max', hulu:'Hulu', disney:'Disney+', apple:'AppleTV', prime:'Prime Video', peacock:'Peacock' };
   const properties = {
     'Title': { title: [{ text: { content: title } }] },
     'Available On': { rich_text: [{ text: { content: availableText } }] },
     'Last Checked': { date: { start: new Date().toISOString().split('T')[0] } },
+    'Year': { rich_text: [{ text: { content: year || '' } }] },
   };
-  for (const [id, col] of Object.entries(colMap)) {
+  if (posterUrl) properties['Poster'] = { url: posterUrl };
+  for (const [id, col] of Object.entries(COL_MAP)) {
     properties[col] = { checkbox: services.includes(id) };
   }
   try {
-    const res = await fetch('https://api.notion.com/v1/pages', {
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + NOTION_TOKEN, 'Notion-Version': '2022-06-28', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ parent: { database_id: DATABASE_ID }, properties })
-    });
-    const data = await res.json();
-    return data.id || null;
-  } catch(e) { return null; }
+    if (pageId) {
+      await notionRequest('PATCH', '/pages/' + pageId, { properties });
+      return pageId;
+    } else {
+      const data = await notionRequest('POST', '/pages', {
+        parent: { database_id: DATABASE_ID }, properties
+      });
+      return data.id || null;
+    }
+  } catch(e) { console.error('Notion write error:', e); return pageId; }
 }
 
+// ── Remove movie ──────────────────────────────────────────────────────────────
+async function removeMovie(i) {
+  const movie = movies[i];
+  movies.splice(i, 1);
+  renderWatchlist();
+  if (movie.notionId) {
+    try {
+      await notionRequest('PATCH', '/pages/' + movie.notionId, { archived: true });
+    } catch(e) { console.error('Remove error:', e); }
+  }
+}
+
+// ── Refresh all ───────────────────────────────────────────────────────────────
+async function refreshAll(force) {
+  if (isRefreshing) return;
+  isRefreshing = true;
+  document.getElementById('refreshBtn').classList.add('spinning');
+  const today = new Date().toISOString().split('T')[0];
+  const stale = movies.filter(m => force || !m.lastChecked || m.lastChecked < today);
+  if (!stale.length) {
+    showStatus('All up to date', 'success');
+    isRefreshing = false;
+    document.getElementById('refreshBtn').classList.remove('spinning');
+    return;
+  }
+  showStatus('Checking ' + stale.length + ' movie' + (stale.length > 1 ? 's' : '') + '...');
+  for (const movie of stale) {
+    const services = await getStreamingAvailability(movie.title);
+    movie.streaming = services;
+    movie.lastChecked = today;
+    if (movie.notionId) await writeToNotion(movie.notionId, movie.title, movie.year, movie.posterUrl, services);
+  }
+  renderWatchlist();
+  showStatus('All updated', 'success');
+  isRefreshing = false;
+  document.getElementById('refreshBtn').classList.remove('spinning');
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
 function renderWatchlist() {
   const el = document.getElementById('watchlist');
+  const countEl = document.getElementById('movieCount');
+  countEl.textContent = movies.length ? movies.length + ' movie' + (movies.length !== 1 ? 's' : '') : '';
+
   if (!movies.length) {
     el.innerHTML = '<div class="empty-state"><div class="empty-icon">🎬</div><div class="empty-text">Search for a movie above<br>to add it to your list</div></div>';
     return;
@@ -272,12 +371,7 @@ function renderWatchlist() {
   }).join('');
 }
 
-function removeMovie(i) {
-  movies.splice(i, 1);
-  saveMovies();
-  renderWatchlist();
-}
-
+// ── Search input ──────────────────────────────────────────────────────────────
 document.getElementById('searchInput').addEventListener('input', e => {
   clearTimeout(searchTimer);
   const val = e.target.value.trim();
@@ -289,7 +383,23 @@ document.addEventListener('click', e => {
   if (!e.target.closest('.search-wrap') && !e.target.closest('.results')) hideResults();
 });
 
-loadMovies();
+// ── Init ──────────────────────────────────────────────────────────────────────
+async function init() {
+  const data = await loadFromNotion();
+  if (data === null) {
+    // CORS blocked — fall back to empty state with a message
+    document.getElementById('watchlist').innerHTML =
+      '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Could not load from Notion.<br>CORS may be blocking the request.</div></div>';
+    showStatus('Notion connection failed', 'error');
+    return;
+  }
+  movies = data;
+  renderWatchlist();
+  // Auto-refresh stale entries silently on load
+  refreshAll(false);
+}
+
+init();
 </script>
 </body>
 </html>
