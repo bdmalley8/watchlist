@@ -27,7 +27,7 @@
   body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 15px; min-height: 100vh; overflow-x: hidden; }
   body::before { content: ''; position: fixed; inset: 0; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E"); pointer-events: none; z-index: 9999; opacity: 0.4; }
   .app { max-width: 480px; margin: 0 auto; padding: 0 0 80px; min-height: 100vh; }
-  header { padding: 52px 24px 20px; position: relative; display: flex; align-items: flex-start; justify-content: space-between; }
+  header { padding: 52px 24px 20px; display: flex; align-items: flex-start; justify-content: space-between; }
   .header-left {}
   .logo { font-family: 'Bebas Neue', sans-serif; font-size: 42px; letter-spacing: 3px; color: var(--text); line-height: 1; }
   .logo span { color: var(--accent); }
@@ -114,11 +114,9 @@
 <div class="status" id="status"></div>
 
 <script>
-const NOTION_TOKEN = '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';
-const DATABASE_ID  = '32a61d319fd18026b226e4425d2c282b';
-const RAPID_KEY    = '6843182acdmsh3606361dc74ed24p1b3afejsnf8eccf80e039';
-const TMDB_KEY     = 'cd13f611fe266eabec6fd4bd6495b74e';
-const REFRESH_HOURS = 24;
+const API_URL   = 'https://script.google.com/macros/s/AKfycbyEvRpID_ABmEbtbF9u8gcUSa3oCDc71Yg_hDOHByKcIoRaAoWdd9IEHpWtwX0IJ0kCbQ/exec';
+const RAPID_KEY = '6843182acdmsh3606361dc74ed24p1b3afejsnf8eccf80e039';
+const TMDB_KEY  = 'cd13f611fe266eabec6fd4bd6495b74e';
 
 const SERVICE_MAP = {
   netflix:  { label: 'Netflix',   cls: 'badge-netflix' },
@@ -128,11 +126,6 @@ const SERVICE_MAP = {
   apple:    { label: 'Apple TV+', cls: 'badge-apple' },
   prime:    { label: 'Prime',     cls: 'badge-prime' },
   peacock:  { label: 'Peacock',   cls: 'badge-peacock' },
-};
-
-const COL_MAP = {
-  netflix: 'Netflix', hbo: 'Max', hulu: 'Hulu',
-  disney: 'Disney+', apple: 'AppleTV', prime: 'Prime Video', peacock: 'Peacock'
 };
 
 let movies = [];
@@ -146,50 +139,40 @@ function showStatus(msg, type) {
   el.innerHTML = msg;
   el.className = 'status visible ' + (type || '');
   clearTimeout(statusTimer);
-  statusTimer = setTimeout(() => el.classList.remove('visible'), 3000);
+  statusTimer = setTimeout(() => el.classList.remove('visible'), 3500);
 }
 
-// ── Notion API ────────────────────────────────────────────────────────────────
-async function notionRequest(method, path, data) {
-  const res = await fetch('https://api.notion.com/v1' + path, {
-    method,
-    headers: {
-      'Authorization': 'Bearer ' + NOTION_TOKEN,
-      'Notion-Version': '2022-06-28',
-      'Content-Type': 'application/json',
-    },
-    body: data ? JSON.stringify(data) : undefined,
+// ── Sheet API ─────────────────────────────────────────────────────────────────
+async function sheetGet() {
+  const res = await fetch(API_URL + '?action=get');
+  return res.json();
+}
+
+async function sheetPost(action, data) {
+  const res = await fetch(API_URL + '?action=' + action, {
+    method: 'POST',
+    body: JSON.stringify(data),
   });
   return res.json();
 }
 
-// ── Load list from Notion ─────────────────────────────────────────────────────
-async function loadFromNotion() {
+// ── Load list ─────────────────────────────────────────────────────────────────
+async function loadList() {
   try {
-    const data = await notionRequest('POST', '/databases/' + DATABASE_ID + '/query', {
-      sorts: [{ timestamp: 'created_time', direction: 'descending' }]
-    });
-    if (!data.results) return [];
-    return data.results.map(page => {
-      const props = page.properties;
-      const title = props.Title?.title?.[0]?.plain_text || '';
-      const lastChecked = props['Last Checked']?.date?.start || null;
-      const availableOn = props['Available On']?.rich_text?.[0]?.plain_text || '';
-      const posterUrl = props['Poster']?.url || '';
-      const year = props['Year']?.rich_text?.[0]?.plain_text || '';
-
-      // Parse streaming from Available On text
-      const streaming = availableOn && availableOn !== 'Not currently streaming'
-        ? Object.entries(SERVICE_MAP)
-            .filter(([id, svc]) => availableOn.includes(svc.label))
-            .map(([id]) => id)
-        : (availableOn === 'Not currently streaming' ? [] : null);
-
-      return { notionId: page.id, title, year, posterUrl, streaming, lastChecked };
-    }).filter(m => m.title);
+    const rows = await sheetGet();
+    movies = rows.map(r => ({
+      title: r.title || '',
+      year: r.year || '',
+      posterUrl: r.posterUrl || '',
+      streaming: r.streaming ? r.streaming.split(',').map(s => s.trim()).filter(Boolean) : [],
+      lastChecked: r.lastChecked || '',
+    }));
+    renderWatchlist();
+    refreshStale();
   } catch(e) {
-    console.error('Notion load error:', e);
-    return null;
+    console.error('Load error:', e);
+    document.getElementById('watchlist').innerHTML =
+      '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Could not load list.<br>Check your connection.</div></div>';
   }
 }
 
@@ -257,18 +240,18 @@ document.getElementById('results').addEventListener('click', function(e) {
   if (!results[idx]) return;
   const m = results[idx];
   const year = m.release_date ? m.release_date.substring(0,4) : '';
-  addMovie(m.id, m.title, year, m.poster_path || '');
+  addMovie(m.title, year, m.poster_path || '');
 });
 
 // ── Add movie ─────────────────────────────────────────────────────────────────
-async function addMovie(tmdbId, title, year, posterPath) {
+async function addMovie(title, year, posterPath) {
   hideResults();
   document.getElementById('searchInput').value = '';
   if (movies.find(m => m.title.toLowerCase() === title.toLowerCase())) {
     showStatus(title + ' is already on your list'); return;
   }
   const posterUrl = posterPath ? 'https://image.tmdb.org/t/p/w342' + posterPath : '';
-  const movie = { notionId: null, title, year, posterUrl, streaming: null, lastChecked: null };
+  const movie = { title, year, posterUrl, streaming: null, lastChecked: '' };
   movies.unshift(movie);
   renderWatchlist();
   showStatus('Adding ' + title + '...');
@@ -277,37 +260,14 @@ async function addMovie(tmdbId, title, year, posterPath) {
   movie.streaming = services;
   movie.lastChecked = new Date().toISOString().split('T')[0];
 
-  const notionId = await writeToNotion(null, title, year, posterUrl, services);
-  movie.notionId = notionId;
+  await sheetPost('add', {
+    title, year, posterUrl,
+    streaming: services.join(', '),
+    lastChecked: movie.lastChecked,
+  });
+
   renderWatchlist();
   showStatus(title + ' added', 'success');
-}
-
-// ── Write to Notion ───────────────────────────────────────────────────────────
-async function writeToNotion(pageId, title, year, posterUrl, services) {
-  const names = services.map(s => SERVICE_MAP[s]?.label).filter(Boolean);
-  const availableText = names.length ? names.join(', ') : 'Not currently streaming';
-  const properties = {
-    'Title': { title: [{ text: { content: title } }] },
-    'Available On': { rich_text: [{ text: { content: availableText } }] },
-    'Last Checked': { date: { start: new Date().toISOString().split('T')[0] } },
-    'Year': { rich_text: [{ text: { content: year || '' } }] },
-  };
-  if (posterUrl) properties['Poster'] = { url: posterUrl };
-  for (const [id, col] of Object.entries(COL_MAP)) {
-    properties[col] = { checkbox: services.includes(id) };
-  }
-  try {
-    if (pageId) {
-      await notionRequest('PATCH', '/pages/' + pageId, { properties });
-      return pageId;
-    } else {
-      const data = await notionRequest('POST', '/pages', {
-        parent: { database_id: DATABASE_ID }, properties
-      });
-      return data.id || null;
-    }
-  } catch(e) { console.error('Notion write error:', e); return pageId; }
 }
 
 // ── Remove movie ──────────────────────────────────────────────────────────────
@@ -315,32 +275,35 @@ async function removeMovie(i) {
   const movie = movies[i];
   movies.splice(i, 1);
   renderWatchlist();
-  if (movie.notionId) {
-    try {
-      await notionRequest('PATCH', '/pages/' + movie.notionId, { archived: true });
-    } catch(e) { console.error('Remove error:', e); }
-  }
+  await sheetPost('remove', { title: movie.title });
 }
 
-// ── Refresh all ───────────────────────────────────────────────────────────────
-async function refreshAll(force) {
-  if (isRefreshing) return;
-  isRefreshing = true;
-  document.getElementById('refreshBtn').classList.add('spinning');
+// ── Refresh stale (silent, on load) ──────────────────────────────────────────
+async function refreshStale() {
   const today = new Date().toISOString().split('T')[0];
-  const stale = movies.filter(m => force || !m.lastChecked || m.lastChecked < today);
-  if (!stale.length) {
-    showStatus('All up to date', 'success');
-    isRefreshing = false;
-    document.getElementById('refreshBtn').classList.remove('spinning');
-    return;
-  }
-  showStatus('Checking ' + stale.length + ' movie' + (stale.length > 1 ? 's' : '') + '...');
+  const stale = movies.filter(m => !m.lastChecked || m.lastChecked < today);
+  if (!stale.length) return;
   for (const movie of stale) {
     const services = await getStreamingAvailability(movie.title);
     movie.streaming = services;
     movie.lastChecked = today;
-    if (movie.notionId) await writeToNotion(movie.notionId, movie.title, movie.year, movie.posterUrl, services);
+    await sheetPost('update', { title: movie.title, streaming: services.join(', '), lastChecked: today });
+  }
+  renderWatchlist();
+}
+
+// ── Refresh all (manual button) ───────────────────────────────────────────────
+async function refreshAll() {
+  if (isRefreshing) return;
+  isRefreshing = true;
+  document.getElementById('refreshBtn').classList.add('spinning');
+  showStatus('Refreshing ' + movies.length + ' movie' + (movies.length !== 1 ? 's' : '') + '...');
+  const today = new Date().toISOString().split('T')[0];
+  for (const movie of movies) {
+    const services = await getStreamingAvailability(movie.title);
+    movie.streaming = services;
+    movie.lastChecked = today;
+    await sheetPost('update', { title: movie.title, streaming: services.join(', '), lastChecked: today });
   }
   renderWatchlist();
   showStatus('All updated', 'success');
@@ -384,22 +347,7 @@ document.addEventListener('click', e => {
 });
 
 // ── Init ──────────────────────────────────────────────────────────────────────
-async function init() {
-  const data = await loadFromNotion();
-  if (data === null) {
-    // CORS blocked — fall back to empty state with a message
-    document.getElementById('watchlist').innerHTML =
-      '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Could not load from Notion.<br>CORS may be blocking the request.</div></div>';
-    showStatus('Notion connection failed', 'error');
-    return;
-  }
-  movies = data;
-  renderWatchlist();
-  // Auto-refresh stale entries silently on load
-  refreshAll(false);
-}
-
-init();
+loadList();
 </script>
 </body>
 </html>
