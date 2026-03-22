@@ -62,7 +62,8 @@
   .movie-poster-placeholder { width: 100%; aspect-ratio: 2/3; background: var(--surface2); display: flex; align-items: center; justify-content: center; font-size: 32px; }
   .movie-info { padding: 10px 12px 12px; }
   .movie-title { font-weight: 500; font-size: 13px; line-height: 1.3; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .movie-year { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+  .movie-year { font-size: 11px; color: var(--muted); margin-bottom: 8px; display: flex; align-items: center; gap: 5px; }
+  .rating-badge { font-size: 9px; font-weight: 600; color: var(--muted); border: 1px solid rgba(255,255,255,0.15); border-radius: 3px; padding: 1px 4px; letter-spacing: 0.3px; flex-shrink: 0; }
   .streaming-badges { display: flex; flex-wrap: wrap; gap: 4px; min-height: 20px; }
   .badge { font-size: 9px; font-weight: 500; letter-spacing: 0.3px; padding: 3px 6px; border-radius: 4px; text-transform: uppercase; display: flex; align-items: center; gap: 3px; }
   .badge-netflix { background: rgba(229,9,20,0.2); color: #e55b64; }
@@ -220,6 +221,7 @@ async function loadList() {
       streaming: parseStreaming(r.streaming),
       streamingRaw: parseStreaming(r.streaming),
       lastChecked: r.lastChecked || null,
+      rating: r.rating || '',
     }));
     renderWatchlist();
     refreshAll(false);
@@ -251,6 +253,25 @@ async function getStreamingAvailability(title) {
     }
     return services;
   } catch(e) { return []; }
+}
+
+// ── TMDB Rating ───────────────────────────────────────────────────────────────
+async function getMpaaRating(tmdbId) {
+  try {
+    const res = await fetch('https://api.themoviedb.org/3/movie/' + tmdbId + '/release_dates?api_key=' + TMDB_KEY);
+    const data = await res.json();
+    const us = (data.results || []).find(r => r.iso_3166_1 === 'US');
+    if (!us) return '';
+    return us.release_dates.find(d => d.certification)?.certification || '';
+  } catch(e) { return ''; }
+}
+
+async function getTmdbId(title, year) {
+  try {
+    const res = await fetch('https://api.themoviedb.org/3/search/movie?api_key=' + TMDB_KEY + '&query=' + encodeURIComponent(title) + (year ? '&year=' + year : '') + '&language=en-US&page=1');
+    const data = await res.json();
+    return data.results?.[0]?.id || null;
+  } catch(e) { return null; }
 }
 
 // ── TMDB Search ───────────────────────────────────────────────────────────────
@@ -297,31 +318,36 @@ document.getElementById('results').addEventListener('click', function(e) {
   if (!results[idx]) return;
   const m = results[idx];
   const year = m.release_date ? m.release_date.substring(0,4) : '';
-  addMovie(m.title, year, m.poster_path || '');
+  addMovie(m.title, year, m.poster_path || '', m.id);
 });
 
 // ── Add movie ─────────────────────────────────────────────────────────────────
-async function addMovie(title, year, posterPath) {
+async function addMovie(title, year, posterPath, tmdbId) {
   hideResults();
   document.getElementById('searchInput').value = '';
   if (movies.find(m => m.title.toLowerCase() === title.toLowerCase())) {
     showStatus(title + ' is already on your list'); return;
   }
   const posterUrl = posterPath ? 'https://image.tmdb.org/t/p/w342' + posterPath : '';
-  const movie = { title, year, posterUrl, streaming: null, lastChecked: null };
+  const movie = { title, year, posterUrl, streaming: null, lastChecked: null, rating: '' };
   movies.unshift(movie);
   renderWatchlist();
   showStatus('Adding ' + title + '...');
 
-  const services = await getStreamingAvailability(title);
+  const [services, rating] = await Promise.all([
+    getStreamingAvailability(title),
+    tmdbId ? getMpaaRating(tmdbId) : Promise.resolve('')
+  ]);
   movie.streaming = services;
+  movie.rating = rating;
   movie.lastChecked = new Date().toISOString().split('T')[0];
 
   try {
     await sheetAdd({
       title, year, posterUrl,
       streaming: JSON.stringify(services),
-      lastChecked: movie.lastChecked
+      lastChecked: movie.lastChecked,
+      rating
     });
     showStatus(title + ' added', 'success');
   } catch(e) {
@@ -356,7 +382,11 @@ async function refreshAll(force) {
     const services = await getStreamingAvailability(movie.title);
     movie.streaming = services;
     movie.lastChecked = today;
-    await sheetUpdate({ title: movie.title, streaming: JSON.stringify(services), lastChecked: today });
+    if (!movie.rating) {
+      const tmdbId = await getTmdbId(movie.title, movie.year);
+      if (tmdbId) movie.rating = await getMpaaRating(tmdbId);
+    }
+    await sheetUpdate({ title: movie.title, streaming: JSON.stringify(services), lastChecked: today, rating: movie.rating || '' });
   }
   renderWatchlist();
   showStatus('All updated', 'success');
@@ -407,7 +437,7 @@ function renderWatchlist() {
       poster +
       '<div class="movie-info">' +
         '<div class="movie-title">' + m.title + '</div>' +
-        '<div class="movie-year">' + m.year + '</div>' +
+        '<div class="movie-year">' + m.year + (m.rating ? '<span class="rating-badge">' + m.rating + '</span>' : '') + '</div>' +
         '<div class="streaming-badges">' + badges + '</div>' +
       '</div></div>';
   }).join('');
