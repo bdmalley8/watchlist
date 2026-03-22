@@ -253,6 +253,7 @@ async function loadList() {
       lastChecked: r.lastChecked || null,
       rating: r.rating || '',
       csmRating: r.csmRating || '',
+      parentsRating: r.parentsRating || '',
     }));
     renderWatchlist();
     refreshAll(false);
@@ -287,13 +288,13 @@ async function getStreamingAvailability(title) {
 }
 
 // ── CSM Rating ────────────────────────────────────────────────────────────────
-async function fetchCsmRating(title, year) {
+async function fetchCsmRatings(title, year) {
   try {
     const url = SCRIPT_URL + '?action=csm&title=' + encodeURIComponent(title) + '&year=' + encodeURIComponent(year || '');
     const res = await fetch(url, { redirect: 'follow' });
     const data = await res.json();
-    return data.rating || '';
-  } catch(e) { return ''; }
+    return { csmRating: data.csmRating || '', parentsRating: data.parentsRating || '' };
+  } catch(e) { return { csmRating: '', parentsRating: '' }; }
 }
 
 // ── TMDB Rating ───────────────────────────────────────────────────────────────
@@ -370,19 +371,20 @@ async function addMovie(title, year, posterPath, tmdbId) {
     showStatus(title + ' is already on your list'); return;
   }
   const posterUrl = posterPath ? 'https://image.tmdb.org/t/p/w342' + posterPath : '';
-  const movie = { title, year, posterUrl, streaming: null, lastChecked: null, rating: '', csmRating: '' };
+  const movie = { title, year, posterUrl, streaming: null, lastChecked: null, rating: '', csmRating: '', parentsRating: '' };
   movies.unshift(movie);
   renderWatchlist();
   showStatus('Adding ' + title + '...');
 
-  const [services, rating, csmRating] = await Promise.all([
+  const [services, rating, csmRatings] = await Promise.all([
     getStreamingAvailability(title),
     tmdbId ? getMpaaRating(tmdbId) : Promise.resolve(''),
-    activeList === 'kids' ? fetchCsmRating(title, year) : Promise.resolve('')
+    activeList === 'kids' ? fetchCsmRatings(title, year) : Promise.resolve({ csmRating: '', parentsRating: '' })
   ]);
   movie.streaming = services;
   movie.rating = rating;
-  movie.csmRating = csmRating;
+  movie.csmRating = csmRatings.csmRating;
+  movie.parentsRating = csmRatings.parentsRating;
   movie.lastChecked = new Date().toISOString().split('T')[0];
 
   try {
@@ -390,7 +392,9 @@ async function addMovie(title, year, posterPath, tmdbId) {
       title, year, posterUrl,
       streaming: JSON.stringify(services),
       lastChecked: movie.lastChecked,
-      rating, csmRating
+      rating,
+      csmRating: movie.csmRating,
+      parentsRating: movie.parentsRating
     });
     showStatus(title + ' added', 'success');
   } catch(e) {
@@ -414,7 +418,7 @@ async function refreshAll(force) {
   isRefreshing = true;
   document.getElementById('refreshBtn').classList.add('spinning');
   const today = new Date().toISOString().split('T')[0];
-  const stale = movies.filter(m => force || !m.lastChecked || m.lastChecked < today || !m.rating || (activeList === 'kids' && !m.csmRating));
+  const stale = movies.filter(m => force || !m.lastChecked || m.lastChecked < today || !m.rating || (activeList === 'kids' && (!m.csmRating || !m.parentsRating)));
   if (!stale.length) {
     showStatus('All up to date', 'success');
     isRefreshing = false;
@@ -430,10 +434,12 @@ async function refreshAll(force) {
       const tmdbId = await getTmdbId(movie.title, movie.year);
       if (tmdbId) movie.rating = await getMpaaRating(tmdbId);
     }
-    if (activeList === 'kids' && !movie.csmRating) {
-      movie.csmRating = await fetchCsmRating(movie.title, movie.year);
+    if (activeList === 'kids' && (!movie.csmRating || !movie.parentsRating)) {
+      const csmRatings = await fetchCsmRatings(movie.title, movie.year);
+      movie.csmRating = csmRatings.csmRating;
+      movie.parentsRating = csmRatings.parentsRating;
     }
-    await sheetUpdate({ title: movie.title, streaming: JSON.stringify(services), lastChecked: today, rating: movie.rating || '', csmRating: movie.csmRating || '' });
+    await sheetUpdate({ title: movie.title, streaming: JSON.stringify(services), lastChecked: today, rating: movie.rating || '', csmRating: movie.csmRating || '', parentsRating: movie.parentsRating || '' });
   }
   renderWatchlist();
   showStatus('All updated', 'success');
@@ -485,6 +491,7 @@ function renderWatchlist() {
         '<div class="movie-year">' + m.year +
           (m.rating ? '<span class="rating-badge">' + m.rating + '</span>' : '') +
           (activeList === 'kids' && m.csmRating ? '<span class="csm-badge">CSM ' + m.csmRating + '</span>' : '') +
+          (activeList === 'kids' && m.parentsRating ? '<span class="csm-badge">Parents ' + m.parentsRating + '</span>' : '') +
         '</div>' +
         '<div class="streaming-badges">' + badges + '</div>' +
       '</div></div>';
