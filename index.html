@@ -273,17 +273,18 @@ async function getStreamingAvailability(title) {
     const data = await res.json();
     if (!data || !data.length) return [];
     const options = data[0].streamingOptions?.us || [];
-    const seen = new Set();
-    const services = [];
+    const TYPE_PRIORITY = { subscription: 0, free: 1, rent: 2, buy: 3 };
+    const best = {};
     for (const opt of options) {
       const id = opt?.service?.id;
       const type = opt?.type || 'subscription';
-      if (id && SERVICE_MAP[id] && !seen.has(id)) {
-        seen.add(id);
-        services.push({ id, type });
+      if (id && SERVICE_MAP[id]) {
+        if (!best[id] || TYPE_PRIORITY[type] < TYPE_PRIORITY[best[id]]) {
+          best[id] = type;
+        }
       }
     }
-    return services;
+    return Object.entries(best).map(([id, type]) => ({ id, type }));
   } catch(e) { return []; }
 }
 
