@@ -53,9 +53,7 @@
   .result-year { font-size: 12px; color: var(--muted); margin-top: 2px; }
   .result-add { font-size: 11px; font-weight: 500; color: var(--accent); letter-spacing: 0.5px; flex-shrink: 0; pointer-events: none; }
   .no-results { padding: 16px; color: var(--muted); font-size: 13px; text-align: center; }
-  .section-label { font-family: 'Bebas Neue', sans-serif; font-size: 13px; letter-spacing: 3px; color: var(--muted); padding: 24px 24px 12px; display: flex; align-items: center; justify-content: space-between; }
-  .movie-count { font-family: 'DM Sans', sans-serif; font-size: 12px; letter-spacing: 0; color: var(--muted); }
-  .watchlist { padding: 0 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.watchlist { padding: 0 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   .movie-card { background: var(--surface); border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); position: relative; animation: fadeIn 0.3s ease; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
   .movie-poster { width: 100%; aspect-ratio: 2/3; object-fit: cover; display: block; background: var(--surface2); }
@@ -86,6 +84,10 @@
   .empty-icon { font-size: 40px; margin-bottom: 12px; opacity: 0.4; }
   .empty-text { font-size: 14px; line-height: 1.6; }
   .loading-state { grid-column: 1 / -1; text-align: center; padding: 48px 24px; color: var(--muted); font-size: 14px; }
+  .sort-bar { display: flex; gap: 6px; padding: 8px 24px 16px; }
+  .sort-btn { background: none; border: 1px solid var(--border); border-radius: 99px; padding: 5px 12px; font-family: 'DM Sans', sans-serif; font-size: 11px; font-weight: 500; color: var(--muted); cursor: pointer; transition: all 0.2s; letter-spacing: 0.3px; }
+  .sort-btn.active { border-color: rgba(232,197,71,0.4); color: var(--accent); }
+  .sort-btn:hover:not(.active) { border-color: rgba(255,255,255,0.15); color: var(--text); }
   .tabs { display: flex; gap: 6px; padding: 0 24px 16px; }
   .tab { flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500; color: var(--muted); cursor: pointer; transition: all 0.2s; letter-spacing: 0.3px; }
   .tab.active { background: var(--surface2); border-color: rgba(232,197,71,0.4); color: var(--accent); }
@@ -113,9 +115,11 @@
     <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
   </div>
   <div class="results" id="results"></div>
-  <div class="section-label">
-    <span>On Your List</span>
-    <span class="movie-count" id="movieCount"></span>
+  <div class="sort-bar">
+    <button class="sort-btn active" id="sort-added" onclick="setSort('added')">Added</button>
+    <button class="sort-btn" id="sort-az" onclick="setSort('az')">A–Z</button>
+    <button class="sort-btn" id="sort-year" onclick="setSort('year')">Year</button>
+    <button class="sort-btn" id="sort-rating" onclick="setSort('rating')">Rating</button>
   </div>
   <div class="watchlist" id="watchlist">
     <div class="loading-state">Loading your list...</div>
@@ -153,8 +157,30 @@ function parseStreaming(val) {
 
 let movies = [];
 let activeList = 'family';
+let sortBy = 'added';
 let searchTimer = null;
 let isRefreshing = false;
+
+const RATING_ORDER = { 'G': 0, 'PG': 1, 'PG-13': 2, 'R': 3, 'NC-17': 4 };
+
+function setSort(val) {
+  sortBy = val;
+  document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('sort-' + val).classList.add('active');
+  renderWatchlist();
+}
+
+function sortedMovies() {
+  const list = [...movies];
+  if (sortBy === 'az') return list.sort((a, b) => a.title.localeCompare(b.title));
+  if (sortBy === 'year') return list.sort((a, b) => (parseInt(b.year) || 0) - (parseInt(a.year) || 0));
+  if (sortBy === 'rating') return list.sort((a, b) => {
+    const ra = RATING_ORDER[a.rating] ?? 99;
+    const rb = RATING_ORDER[b.rating] ?? 99;
+    return ra - rb;
+  });
+  return list.reverse(); // 'added' — newest first
+}
 
 // ── Status ────────────────────────────────────────────────────────────────────
 let statusTimer = null;
@@ -203,6 +229,9 @@ async function switchList(list) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById('tab-' + list).classList.add('active');
   movies = [];
+  sortBy = 'added';
+  document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('sort-added').classList.add('active');
   document.getElementById('watchlist').innerHTML = '<div class="loading-state">Loading your list...</div>';
   hideResults();
   document.getElementById('searchInput').value = '';
@@ -357,11 +386,12 @@ async function addMovie(title, year, posterPath, tmdbId) {
 }
 
 // ── Remove movie ──────────────────────────────────────────────────────────────
-async function removeMovie(i) {
-  const movie = movies[i];
+async function removeMovie(title) {
+  const i = movies.findIndex(m => m.title === title);
+  if (i === -1) return;
   movies.splice(i, 1);
   renderWatchlist();
-  await sheetRemove({ title: movie.title });
+  await sheetRemove({ title });
 }
 
 // ── Refresh ───────────────────────────────────────────────────────────────────
@@ -404,15 +434,13 @@ function costLabel(type) {
 
 function renderWatchlist() {
   const el = document.getElementById('watchlist');
-  const countEl = document.getElementById('movieCount');
-  countEl.textContent = movies.length ? movies.length + ' movie' + (movies.length !== 1 ? 's' : '') : '';
 
   if (!movies.length) {
     el.innerHTML = '<div class="empty-state"><div class="empty-icon">🎬</div><div class="empty-text">Search for a movie above<br>to add it to your list</div></div>';
     return;
   }
 
-  el.innerHTML = movies.map((m, i) => {
+  el.innerHTML = sortedMovies().map((m, i) => {
     const poster = m.posterUrl
       ? '<img class="movie-poster" src="' + m.posterUrl + '" alt="' + m.title + '" loading="lazy">'
       : '<div class="movie-poster-placeholder">🎬</div>';
@@ -433,7 +461,7 @@ function renderWatchlist() {
     }
 
     return '<div class="movie-card">' +
-      '<button class="remove-btn" onclick="removeMovie(' + i + ')">×</button>' +
+      '<button class="remove-btn" onclick="removeMovie(' + JSON.stringify(m.title) + ')">×</button>' +
       poster +
       '<div class="movie-info">' +
         '<div class="movie-title">' + m.title + '</div>' +
