@@ -370,7 +370,7 @@ async function refreshAll(force) {
   isRefreshing = true;
   document.getElementById('refreshBtn').classList.add('spinning');
   const today = new Date().toISOString().split('T')[0];
-  const stale = movies.filter(m => force || !m.lastChecked || m.lastChecked < today);
+  const stale = movies.filter(m => force || !m.lastChecked || m.lastChecked < today || !m.rating);
   if (!stale.length) {
     showStatus('All up to date', 'success');
     isRefreshing = false;
