@@ -528,7 +528,7 @@ function renderWatchlist() {
     }
 
     return '<div class="movie-card">' +
-      '<button class="remove-btn" onclick="removeMovie(' + JSON.stringify(m.title) + ')">×</button>' +
+      '<button class="remove-btn" onclick="removeMovie(' + JSON.stringify(m.title).replace(/"/g, '&quot;') + ')">×</button>' +
       poster +
       '<div class="movie-info">' +
         '<div class="movie-title">' + m.title + '</div>' +
