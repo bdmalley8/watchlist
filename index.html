@@ -144,6 +144,20 @@ const SERVICE_MAP = {
   peacock:  { label: 'Peacock',   cls: 'badge-peacock' },
 };
 
+const TMDB_PROVIDER_MAP = {
+  8:    'netflix',
+  9:    'prime',
+  10:   'prime',
+  15:   'hulu',
+  119:  'prime',
+  337:  'disney',
+  350:  'apple',
+  384:  'hbo',
+  386:  'peacock',
+  387:  'peacock',
+  1899: 'hbo',
+};
+
 function parseStreaming(val) {
   if (!val) return [];
   if (typeof val === 'string') {
@@ -309,6 +323,26 @@ async function getMpaaRating(tmdbId) {
   } catch(e) { return ''; }
 }
 
+async function getTmdbWatchProviders(tmdbId) {
+  try {
+    const res = await fetch('https://api.themoviedb.org/3/movie/' + tmdbId + '/watch/providers?api_key=' + TMDB_KEY);
+    const data = await res.json();
+    const us = data.results?.US || {};
+    const TYPE_PRIORITY = { subscription: 0, free: 1, rent: 2, buy: 3 };
+    const catMap = { flatrate: 'subscription', free: 'free', rent: 'rent', buy: 'buy' };
+    const best = {};
+    for (const [cat, type] of Object.entries(catMap)) {
+      for (const p of (us[cat] || [])) {
+        const id = TMDB_PROVIDER_MAP[p.provider_id];
+        if (id && (!best[id] || TYPE_PRIORITY[type] < TYPE_PRIORITY[best[id]])) {
+          best[id] = type;
+        }
+      }
+    }
+    return Object.entries(best).map(([id, type]) => ({ id, type }));
+  } catch(e) { return []; }
+}
+
 async function getTmdbId(title, year) {
   try {
     const res = await fetch('https://api.themoviedb.org/3/search/movie?api_key=' + TMDB_KEY + '&query=' + encodeURIComponent(title) + (year ? '&year=' + year : '') + '&language=en-US&page=1');
@@ -428,12 +462,21 @@ async function refreshAll(force) {
   }
   showStatus('Checking ' + stale.length + ' movie' + (stale.length !== 1 ? 's' : '') + '...');
   for (const movie of stale) {
-    const services = await getStreamingAvailability(movie.title);
+    const tmdbId = await getTmdbId(movie.title, movie.year);
+    const [rapidServices, tmdbServices] = await Promise.all([
+      getStreamingAvailability(movie.title),
+      tmdbId ? getTmdbWatchProviders(tmdbId) : Promise.resolve([]),
+    ]);
+    const TYPE_PRIORITY = { subscription: 0, free: 1, rent: 2, buy: 3 };
+    const best = {};
+    for (const { id, type } of [...rapidServices, ...tmdbServices]) {
+      if (!best[id] || TYPE_PRIORITY[type] < TYPE_PRIORITY[best[id]]) best[id] = type;
+    }
+    const services = Object.entries(best).map(([id, type]) => ({ id, type }));
     movie.streaming = services;
     movie.lastChecked = today;
-    if (!movie.rating) {
-      const tmdbId = await getTmdbId(movie.title, movie.year);
-      if (tmdbId) movie.rating = await getMpaaRating(tmdbId);
+    if (!movie.rating && tmdbId) {
+      movie.rating = await getMpaaRating(tmdbId);
     }
     if (activeList === 'kids' && (!movie.csmRating || !movie.parentsRating)) {
       const csmRatings = await fetchCsmRatings(movie.title, movie.year);
