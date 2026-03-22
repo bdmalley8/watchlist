@@ -461,34 +461,35 @@ async function refreshAll(force) {
     return;
   }
   showStatus('Checking ' + stale.length + ' movie' + (stale.length !== 1 ? 's' : '') + '...');
-  for (const movie of stale) {
-    const tmdbId = await getTmdbId(movie.title, movie.year);
-    const [rapidServices, tmdbServices] = await Promise.all([
-      getStreamingAvailability(movie.title),
-      tmdbId ? getTmdbWatchProviders(tmdbId) : Promise.resolve([]),
-    ]);
-    const TYPE_PRIORITY = { subscription: 0, free: 1, rent: 2, buy: 3 };
-    const best = {};
-    for (const { id, type } of [...rapidServices, ...tmdbServices]) {
-      if (!best[id] || TYPE_PRIORITY[type] < TYPE_PRIORITY[best[id]]) best[id] = type;
+  try {
+    for (const movie of stale) {
+      const tmdbId = await getTmdbId(movie.title, movie.year);
+      const [rapidServices, tmdbServices] = await Promise.all([
+        getStreamingAvailability(movie.title),
+        tmdbId ? getTmdbWatchProviders(tmdbId) : Promise.resolve([]),
+      ]);
+      const TYPE_PRIORITY = { subscription: 0, free: 1, rent: 2, buy: 3 };
+      const best = {};
+      for (const { id, type } of [...rapidServices, ...tmdbServices]) {
+        if (!best[id] || TYPE_PRIORITY[type] < TYPE_PRIORITY[best[id]]) best[id] = type;
+      }
+      const services = Object.entries(best).map(([id, type]) => ({ id, type }));
+      movie.streaming = services;
+      movie.lastChecked = today;
+      if (!movie.rating && tmdbId) {
+        movie.rating = await getMpaaRating(tmdbId);
+      }
+      if (activeList === 'kids' && !movie.csmRating) {
+        movie.csmRating = await fetchCsmRating(movie.title, movie.year);
+      }
+      await sheetUpdate({ title: movie.title, streaming: JSON.stringify(services), lastChecked: today, rating: movie.rating || '', csmRating: movie.csmRating || '' });
     }
-    const services = Object.entries(best).map(([id, type]) => ({ id, type }));
-    movie.streaming = services;
-    movie.lastChecked = today;
-    if (!movie.rating && tmdbId) {
-      movie.rating = await getMpaaRating(tmdbId);
-    }
-    if (activeList === 'kids' && (!movie.csmRating || !movie.parentsRating)) {
-      const csmRatings = await fetchCsmRatings(movie.title, movie.year);
-      movie.csmRating = csmRatings.csmRating;
-      movie.parentsRating = csmRatings.parentsRating;
-    }
-    await sheetUpdate({ title: movie.title, streaming: JSON.stringify(services), lastChecked: today, rating: movie.rating || '', csmRating: movie.csmRating || '', parentsRating: movie.parentsRating || '' });
+    renderWatchlist();
+    showStatus('All updated', 'success');
+  } finally {
+    isRefreshing = false;
+    document.getElementById('refreshBtn').classList.remove('spinning');
   }
-  renderWatchlist();
-  showStatus('All updated', 'success');
-  isRefreshing = false;
-  document.getElementById('refreshBtn').classList.remove('spinning');
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
