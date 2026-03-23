@@ -89,9 +89,12 @@
   .sort-btn { background: none; border: 1px solid var(--border); border-radius: 99px; padding: 5px 12px; font-family: 'DM Sans', sans-serif; font-size: 11px; font-weight: 500; color: var(--muted); cursor: pointer; transition: all 0.2s; letter-spacing: 0.3px; }
   .sort-btn.active { border-color: rgba(232,197,71,0.4); color: var(--accent); }
   .sort-btn:hover:not(.active) { border-color: rgba(255,255,255,0.15); color: var(--text); }
-  .rt-overlay { position: absolute; top: 8px; left: 8px; font-size: 10px; font-weight: 700; padding: 3px 6px; border-radius: 4px; backdrop-filter: blur(4px); z-index: 1; line-height: 1; }
-  .rt-fresh { background: rgba(250,74,42,0.9); color: #fff; }
-  .rt-rotten { background: rgba(0,0,0,0.65); color: rgba(255,255,255,0.7); }
+  .score-overlay { position: absolute; top: 8px; left: 8px; display: flex; gap: 3px; z-index: 1; }
+  .score-badge { font-size: 9px; font-weight: 700; padding: 2px 5px; border-radius: 3px; backdrop-filter: blur(4px); line-height: 1; white-space: nowrap; }
+  .score-rt-fresh { background: rgba(250,74,42,0.9); color: #fff; }
+  .score-rt-rotten { background: rgba(10,200,85,0.9); color: #fff; }
+  .score-imdb { background: rgba(245,197,24,0.95); color: #000; }
+  .score-mc { background: rgba(107,92,231,0.9); color: #fff; }
   .movie-title a { color: inherit; text-decoration: none; transition: color 0.15s; }
   .movie-title a:hover { color: var(--accent); }
   .tabs { display: flex; gap: 6px; padding: 0 24px 16px; }
@@ -134,7 +137,7 @@
 <div class="status" id="status"></div>
 
 <script>
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyMFV3IcE-m7Mpvm8zL1TDEUQ7ebM_GfI1RO1Mj5_I3PboJaKGTB65CwY2mj_iLrNSn2g/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwwokQQQnHhu6jLaG4-QrvZH_xxl-39BcZRqLWy92kVutoblGJThshiVzwXj0wdPxAZag/exec';
 const RAPID_KEY  = '6843182acdmsh3606361dc74ed24p1b3afejsnf8eccf80e039';
 const TMDB_KEY   = 'cd13f611fe266eabec6fd4bd6495b74e';
 const OMDB_KEY   = 'd10ed96a';
@@ -276,6 +279,8 @@ async function loadList() {
       parentsRating: r.parentsRating || '',
       imdbId: r.imdbId || '',
       rtScore: r.rtScore || '',
+      imdbScore: r.imdbScore || '',
+      mcScore: r.mcScore || '',
     }));
     renderWatchlist();
     refreshAll(false);
@@ -326,17 +331,22 @@ async function getImdbData(tmdbId) {
     const res = await fetch('https://api.themoviedb.org/3/movie/' + tmdbId + '?api_key=' + TMDB_KEY);
     const data = await res.json();
     const imdbId = data.imdb_id || '';
-    let rtScore = '';
+    let rtScore = '', imdbScore = '', mcScore = '';
     if (OMDB_KEY && imdbId) {
       try {
         const omdb = await fetch('https://www.omdbapi.com/?i=' + imdbId + '&apikey=' + OMDB_KEY);
         const omdbData = await omdb.json();
-        const rt = (omdbData.Ratings || []).find(r => r.Source === 'Rotten Tomatoes');
-        if (rt) rtScore = rt.Value.replace('%', ''); // store "85" not "85%" (Sheets converts % to decimal)
+        const ratings = omdbData.Ratings || [];
+        const rt = ratings.find(r => r.Source === 'Rotten Tomatoes');
+        const imdb = ratings.find(r => r.Source === 'Internet Movie Database');
+        const mc = ratings.find(r => r.Source === 'Metacritic');
+        if (rt) rtScore = rt.Value.replace('%', '');
+        if (imdb) imdbScore = imdb.Value.replace('/10', '');
+        if (mc) mcScore = mc.Value.replace('/100', '');
       } catch(e) {}
     }
-    return { imdbId, rtScore };
-  } catch(e) { return { imdbId: '', rtScore: '' }; }
+    return { imdbId, rtScore, imdbScore, mcScore };
+  } catch(e) { return { imdbId: '', rtScore: '', imdbScore: '', mcScore: '' }; }
 }
 
 // ── TMDB Rating ───────────────────────────────────────────────────────────────
@@ -433,7 +443,7 @@ async function addMovie(title, year, posterPath, tmdbId) {
     showStatus(title + ' is already on your list'); return;
   }
   const posterUrl = posterPath ? 'https://image.tmdb.org/t/p/w342' + posterPath : '';
-  const movie = { title, year, posterUrl, streaming: null, lastChecked: null, rating: '', csmRating: '', parentsRating: '', imdbId: '', rtScore: '' };
+  const movie = { title, year, posterUrl, streaming: null, lastChecked: null, rating: '', csmRating: '', parentsRating: '', imdbId: '', rtScore: '', imdbScore: '', mcScore: '' };
   movies.unshift(movie);
   renderWatchlist();
   showStatus('Adding ' + title + '...');
@@ -450,6 +460,8 @@ async function addMovie(title, year, posterPath, tmdbId) {
   movie.parentsRating = csmRatings.parentsRating;
   movie.imdbId = imdbData.imdbId;
   movie.rtScore = imdbData.rtScore;
+  movie.imdbScore = imdbData.imdbScore;
+  movie.mcScore = imdbData.mcScore;
   movie.lastChecked = new Date().toISOString().split('T')[0];
 
   try {
@@ -461,7 +473,9 @@ async function addMovie(title, year, posterPath, tmdbId) {
       csmRating: movie.csmRating,
       parentsRating: movie.parentsRating,
       imdbId: movie.imdbId,
-      rtScore: movie.rtScore
+      rtScore: movie.rtScore,
+      imdbScore: movie.imdbScore,
+      mcScore: movie.mcScore
     });
     showStatus(title + ' added', 'success');
   } catch(e) {
@@ -515,11 +529,13 @@ async function refreshAll(force) {
         const imdbData = await getImdbData(tmdbId);
         movie.imdbId = imdbData.imdbId;
         movie.rtScore = imdbData.rtScore;
+        movie.imdbScore = imdbData.imdbScore;
+        movie.mcScore = imdbData.mcScore;
       }
       if (activeList === 'kids' && !movie.csmRating) {
         movie.csmRating = await fetchCsmRating(movie.title, movie.year);
       }
-      await sheetUpdate({ title: movie.title, streaming: JSON.stringify(services), lastChecked: today, rating: movie.rating || '', csmRating: movie.csmRating || '', imdbId: movie.imdbId || '', rtScore: movie.rtScore || '' });
+      await sheetUpdate({ title: movie.title, streaming: JSON.stringify(services), lastChecked: today, rating: movie.rating || '', csmRating: movie.csmRating || '', imdbId: movie.imdbId || '', rtScore: movie.rtScore || '', imdbScore: movie.imdbScore || '', mcScore: movie.mcScore || '' });
     }
     renderWatchlist();
     showStatus('All updated', 'success');
@@ -578,14 +594,18 @@ function renderWatchlist() {
     const titleHtml = m.imdbId
       ? '<a href="https://www.imdb.com/title/' + m.imdbId + '" target="_blank" rel="noopener">' + m.title + '</a>'
       : m.title;
+    let scoreBadges = '';
     const rtVal = formatRt(m.rtScore);
-    const rtOverlay = rtVal
-      ? '<div class="rt-overlay ' + (parseInt(rtVal) >= 60 ? 'rt-fresh' : 'rt-rotten') + '">' + rtVal + '</div>'
-      : '';
+    if (rtVal) scoreBadges += '<span class="score-badge ' + (parseInt(rtVal) >= 60 ? 'score-rt-fresh' : 'score-rt-rotten') + '">RT ' + rtVal + '</span>';
+    const imdbVal = m.imdbScore ? parseFloat(m.imdbScore) : 0;
+    if (imdbVal) scoreBadges += '<span class="score-badge score-imdb">IMDb ' + imdbVal + '</span>';
+    const mcVal = formatRt(m.mcScore);
+    if (mcVal) scoreBadges += '<span class="score-badge score-mc">MC ' + mcVal + '</span>';
+    const scoreOverlay = scoreBadges ? '<div class="score-overlay">' + scoreBadges + '</div>' : '';
 
     return '<div class="movie-card">' +
       '<button class="remove-btn" onclick="removeMovie(' + JSON.stringify(m.title).replace(/"/g, '&quot;') + ')">×</button>' +
-      rtOverlay +
+      scoreOverlay +
       poster +
       '<div class="movie-info">' +
         '<div class="movie-title">' + titleHtml + '</div>' +
