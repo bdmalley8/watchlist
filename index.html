@@ -495,12 +495,19 @@ async function addMovie(title, year, posterPath, tmdbId) {
   renderWatchlist();
   showStatus('Adding ' + title + '...');
 
-  const [services, rating, csmRatings, imdbData] = await Promise.all([
+  const [rapidServices, tmdbServices, rating, csmRatings, imdbData] = await Promise.all([
     getStreamingAvailability(title),
+    tmdbId ? getTmdbWatchProviders(tmdbId) : Promise.resolve([]),
     tmdbId ? getMpaaRating(tmdbId) : Promise.resolve(''),
     activeList === 'kids' ? fetchCsmRatings(title, year) : Promise.resolve({ csmRating: '', parentsRating: '' }),
     tmdbId ? getImdbData(tmdbId) : Promise.resolve({ imdbId: '', rtScore: '' })
   ]);
+  const TYPE_PRIORITY = { subscription: 0, free: 1, rent: 2, buy: 3 };
+  const best = {};
+  for (const { id, type } of [...rapidServices, ...tmdbServices]) {
+    if (!best[id] || TYPE_PRIORITY[type] < TYPE_PRIORITY[best[id]]) best[id] = type;
+  }
+  const services = Object.entries(best).map(([id, type]) => ({ id, type }));
   movie.streaming = services;
   movie.rating = rating;
   movie.csmRating = csmRatings.csmRating;
