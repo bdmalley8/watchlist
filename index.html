@@ -31,11 +31,18 @@
   .header-left {}
   .logo { font-family: 'Bebas Neue', sans-serif; font-size: 42px; letter-spacing: 3px; color: var(--text); line-height: 1; }
   .logo span { color: var(--accent); }
-  .tagline { font-size: 12px; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; margin-top: 4px; }
   .refresh-btn { background: none; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); padding: 8px 12px; cursor: pointer; font-size: 13px; font-family: 'DM Sans', sans-serif; transition: border-color 0.2s, color 0.2s; margin-top: 8px; display: flex; align-items: center; gap: 6px; }
   .refresh-btn:hover { border-color: rgba(232,197,71,0.4); color: var(--accent); }
   .refresh-btn.spinning svg { animation: spin 1s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
+  .mode-tabs { display: flex; gap: 6px; padding: 0 24px 10px; }
+  .mode-tab { flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 500; color: var(--muted); cursor: pointer; transition: all 0.2s; letter-spacing: 0.5px; text-align: center; }
+  .mode-tab.active { background: var(--surface2); border-color: rgba(232,197,71,0.4); color: var(--accent); }
+  .mode-tab:hover:not(.active) { border-color: rgba(255,255,255,0.15); color: var(--text); }
+  .sub-tabs { display: flex; gap: 6px; padding: 0 24px 16px; }
+  .sub-tab { flex: 1; background: none; border: 1px solid var(--border); border-radius: 99px; padding: 7px; font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 500; color: var(--muted); cursor: pointer; transition: all 0.2s; letter-spacing: 0.3px; text-align: center; }
+  .sub-tab.active { border-color: rgba(232,197,71,0.4); color: var(--accent); }
+  .sub-tab:hover:not(.active) { border-color: rgba(255,255,255,0.15); color: var(--text); }
   .search-wrap { padding: 0 24px 8px; position: relative; }
   .search-input { width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 48px 14px 18px; color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 15px; outline: none; transition: border-color 0.2s; }
   .search-input::placeholder { color: var(--muted); }
@@ -53,7 +60,7 @@
   .result-year { font-size: 12px; color: var(--muted); margin-top: 2px; }
   .result-add { font-size: 11px; font-weight: 500; color: var(--accent); letter-spacing: 0.5px; flex-shrink: 0; pointer-events: none; }
   .no-results { padding: 16px; color: var(--muted); font-size: 13px; text-align: center; }
-.watchlist { padding: 0 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .watchlist { padding: 0 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   .movie-card { background: var(--surface); border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); position: relative; animation: fadeIn 0.3s ease; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
   .movie-poster { width: 100%; aspect-ratio: 2/3; object-fit: cover; display: block; background: var(--surface2); }
@@ -111,33 +118,53 @@
   .score-mc { background: rgba(107,92,231,0.9); color: #fff; }
   .movie-title a { color: inherit; text-decoration: none; transition: color 0.15s; }
   .movie-title a:hover { color: var(--accent); }
-  .tabs { display: flex; gap: 6px; padding: 0 24px 16px; }
-  .tab { flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500; color: var(--muted); cursor: pointer; transition: all 0.2s; letter-spacing: 0.3px; }
-  .tab.active { background: var(--surface2); border-color: rgba(232,197,71,0.4); color: var(--accent); }
-  .tab:hover:not(.active) { border-color: rgba(255,255,255,0.15); color: var(--text); }
+  /* TV season tracker */
+  .season-toggle { display: flex; align-items: center; gap: 5px; padding: 6px 0 2px; cursor: pointer; font-size: 11px; color: var(--muted); user-select: none; -webkit-tap-highlight-color: transparent; }
+  .season-toggle:hover { color: var(--text); }
+  .season-toggle svg { transition: transform 0.2s; flex-shrink: 0; }
+  .season-toggle.open svg { transform: rotate(90deg); }
+  .season-list { display: none; padding: 4px 0 2px; }
+  .season-list.expanded { display: block; }
+  .season-item { display: flex; align-items: center; gap: 6px; padding: 5px 0; font-size: 11px; color: var(--text); cursor: pointer; -webkit-tap-highlight-color: transparent; min-height: 32px; }
+  .season-item input { appearance: none; -webkit-appearance: none; width: 16px; height: 16px; border: 1.5px solid var(--border); border-radius: 3px; background: none; cursor: pointer; flex-shrink: 0; position: relative; }
+  .season-item input:checked { background: var(--accent); border-color: var(--accent); }
+  .season-item input:checked::after { content: ''; position: absolute; left: 4px; top: 1px; width: 5px; height: 9px; border: solid #000; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+  .season-item.upcoming { color: var(--muted); font-style: italic; }
+  .season-progress { font-size: 10px; color: var(--muted); }
+  /* Caught-up state */
+  .movie-card.caught-up { opacity: 0.4; filter: saturate(0.3); transition: opacity 0.3s, filter 0.3s; }
+  .movie-card.caught-up:hover { opacity: 0.7; filter: saturate(0.5); }
+  .show-status-badge { font-size: 8px; font-weight: 600; padding: 2px 6px; border-radius: 3px; letter-spacing: 0.3px; display: inline-block; }
+  .status-caught-up { background: rgba(77,184,128,0.2); color: #4db880; }
+  .status-new-season { background: rgba(232,197,71,0.2); color: var(--accent); }
+  .upcoming-text { font-size: 10px; color: var(--accent2); font-style: italic; margin-top: 2px; }
 </style>
 </head>
 <body>
 <div class="app">
   <header>
     <div class="header-left">
-      <div class="logo">Malley <span>Movies</span></div>
+      <div class="logo">Malley <span>Watchlist</span></div>
     </div>
-    <button class="refresh-btn" id="refreshBtn" onclick="refreshAll(true)">
+    <button class="refresh-btn" id="refreshBtn" onclick="handleRefresh()">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
       Refresh
     </button>
   </header>
-  <div class="tabs">
-    <button class="tab active" id="tab-family" onclick="switchList('family')">Family</button>
-    <button class="tab" id="tab-kids" onclick="switchList('kids')">Kids</button>
+  <div class="mode-tabs">
+    <button class="mode-tab active" id="mode-movies" onclick="switchMode('movies')">Movies</button>
+    <button class="mode-tab" id="mode-tv" onclick="switchMode('tv')">TV Shows</button>
+  </div>
+  <div class="sub-tabs" id="subTabs">
+    <button class="sub-tab active" id="tab-family" onclick="switchList('family')">Family</button>
+    <button class="sub-tab" id="tab-kids" onclick="switchList('kids')">Kids</button>
   </div>
   <div class="search-wrap">
     <input class="search-input" id="searchInput" placeholder="Search for a movie..." autocomplete="off" autocorrect="off">
     <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
   </div>
   <div class="results" id="results"></div>
-  <div class="sort-bar">
+  <div class="sort-bar" id="sortBar">
     <button class="sort-btn active" id="sort-added" onclick="setSort('added')">Added</button>
     <button class="sort-btn" id="sort-az" onclick="setSort('az')">A–Z</button>
     <button class="sort-btn" id="sort-year" onclick="setSort('year')">Year</button>
@@ -163,7 +190,7 @@
 <div class="status" id="status"></div>
 
 <script>
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwwokQQQnHhu6jLaG4-QrvZH_xxl-39BcZRqLWy92kVutoblGJThshiVzwXj0wdPxAZag/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyLFZYuPxcBVaUfrcSfiLu7ngQqg1vsNYlNKleMdZOzl3wdiaMtAA1cBjY77oMRKxMG2g/exec';
 const RAPID_KEY  = '6843182acdmsh3606361dc74ed24p1b3afejsnf8eccf80e039';
 const TMDB_KEY   = 'cd13f611fe266eabec6fd4bd6495b74e';
 const OMDB_KEY   = 'd10ed96a';
@@ -196,16 +223,23 @@ const TMDB_PROVIDER_MAP = {
 function parseStreaming(val) {
   if (!val) return [];
   if (typeof val === 'string') {
-    // Try JSON first
     try { return JSON.parse(val); } catch(e) {}
-    // Fall back to plain comma-separated IDs e.g. "prime, hbo, hulu"
     return val.split(',').map(s => s.trim()).filter(Boolean).map(id => ({ id, type: 'subscription' }));
   }
   return val;
 }
 
+function parseSeasonsWatched(val) {
+  if (!val) return [];
+  const str = String(val);
+  if (!str.trim()) return [];
+  return str.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+}
 
+// ── State ────────────────────────────────────────────────────────────────────
 let movies = [];
+let tvShows = [];
+let activeMode = 'movies';
 let activeList = 'family';
 let sortBy = 'added';
 let filterService = 'all';
@@ -213,24 +247,26 @@ let searchTimer = null;
 let isRefreshing = false;
 
 const RATING_ORDER = { 'G': 0, 'PG': 1, 'PG-13': 2, 'R': 3, 'NC-17': 4 };
+const TYPE_PRIORITY = { subscription: 0, free: 1, rent: 2, buy: 3 };
 
+// ── Sort / Filter ────────────────────────────────────────────────────────────
 function setSort(val) {
   sortBy = val;
   document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('sort-' + val).classList.add('active');
-  renderWatchlist();
+  render();
 }
 
 function setFilter(val) {
   filterService = val;
   document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
   document.querySelector('.filter-btn[data-val="' + val + '"]').classList.add('active');
-  renderWatchlist();
+  render();
 }
 
-function filteredMovies() {
-  if (filterService === 'all') return movies;
-  return movies.filter(m => {
+function filterByStreaming(list) {
+  if (filterService === 'all') return list;
+  return list.filter(m => {
     if (m.streaming === null) return true;
     if (!m.streaming || !m.streaming.length) return false;
     return m.streaming.some(s => (typeof s === 'object' ? s.id : s) === filterService);
@@ -238,7 +274,7 @@ function filteredMovies() {
 }
 
 function sortedMovies() {
-  const list = [...filteredMovies()];
+  const list = [...filterByStreaming(movies)];
   if (sortBy === 'az') return list.sort((a, b) => a.title.localeCompare(b.title));
   if (sortBy === 'year') return list.sort((a, b) => (parseInt(b.year) || 0) - (parseInt(a.year) || 0));
   if (sortBy === 'rating') return list.sort((a, b) => {
@@ -246,7 +282,21 @@ function sortedMovies() {
     const rb = RATING_ORDER[b.rating] ?? 99;
     return ra - rb;
   });
-  return list.reverse(); // 'added' — newest first
+  return list.reverse();
+}
+
+function sortedTvShows() {
+  const list = [...filterByStreaming(tvShows)];
+  if (sortBy === 'az') return list.sort((a, b) => a.title.localeCompare(b.title));
+  if (sortBy === 'next') {
+    return list.sort((a, b) => {
+      const aCaught = isCaughtUp(a) ? 1 : 0;
+      const bCaught = isCaughtUp(b) ? 1 : 0;
+      if (aCaught !== bCaught) return aCaught - bCaught;
+      return 0;
+    });
+  }
+  return list.reverse();
 }
 
 // ── Status ────────────────────────────────────────────────────────────────────
@@ -260,40 +310,70 @@ function showStatus(msg, type) {
 }
 
 // ── Google Sheet API ──────────────────────────────────────────────────────────
+function getListParam() {
+  return activeMode === 'tv' ? 'tv' : activeList;
+}
+
 async function sheetGet() {
-  const res = await fetch(SCRIPT_URL + '?action=get&list=' + activeList, { redirect: 'follow' });
+  const res = await fetch(SCRIPT_URL + '?action=get&list=' + getListParam(), { redirect: 'follow' });
   return res.json();
 }
 
-async function sheetAdd(movie) {
-  await fetch(SCRIPT_URL + '?action=add&list=' + activeList, {
-    method: 'POST',
-    mode: 'no-cors',
-    body: JSON.stringify(movie)
+async function sheetAdd(data) {
+  await fetch(SCRIPT_URL + '?action=add&list=' + getListParam(), {
+    method: 'POST', mode: 'no-cors', body: JSON.stringify(data)
   });
 }
 
-async function sheetUpdate(movie) {
-  await fetch(SCRIPT_URL + '?action=update&list=' + activeList, {
-    method: 'POST',
-    mode: 'no-cors',
-    body: JSON.stringify(movie)
+async function sheetUpdate(data) {
+  await fetch(SCRIPT_URL + '?action=update&list=' + getListParam(), {
+    method: 'POST', mode: 'no-cors', body: JSON.stringify(data)
   });
 }
 
-async function sheetRemove(movie) {
-  await fetch(SCRIPT_URL + '?action=remove&list=' + activeList, {
-    method: 'POST',
-    mode: 'no-cors',
-    body: JSON.stringify(movie)
+async function sheetRemove(data) {
+  await fetch(SCRIPT_URL + '?action=remove&list=' + getListParam(), {
+    method: 'POST', mode: 'no-cors', body: JSON.stringify(data)
   });
 }
 
-// ── Switch list ───────────────────────────────────────────────────────────────
+// ── Mode switching ───────────────────────────────────────────────────────────
+function switchMode(mode) {
+  if (mode === activeMode) return;
+  activeMode = mode;
+  document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('mode-' + mode).classList.add('active');
+  document.getElementById('subTabs').style.display = mode === 'movies' ? 'flex' : 'none';
+  document.getElementById('searchInput').placeholder = mode === 'tv' ? 'Search for a TV show...' : 'Search for a movie...';
+  // Swap sort buttons
+  const sortBar = document.getElementById('sortBar');
+  if (mode === 'tv') {
+    sortBar.innerHTML = '<button class="sort-btn active" id="sort-added" onclick="setSort(\'added\')">Added</button>' +
+      '<button class="sort-btn" id="sort-az" onclick="setSort(\'az\')">A\u2013Z</button>' +
+      '<button class="sort-btn" id="sort-next" onclick="setSort(\'next\')">Next to watch</button>';
+  } else {
+    sortBar.innerHTML = '<button class="sort-btn active" id="sort-added" onclick="setSort(\'added\')">Added</button>' +
+      '<button class="sort-btn" id="sort-az" onclick="setSort(\'az\')">A\u2013Z</button>' +
+      '<button class="sort-btn" id="sort-year" onclick="setSort(\'year\')">Year</button>' +
+      '<button class="sort-btn" id="sort-rating" onclick="setSort(\'rating\')">Rating</button>';
+  }
+  sortBy = 'added';
+  filterService = 'all';
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector('.filter-btn[data-val="all"]').classList.add('active');
+  document.getElementById('filterCount').textContent = '';
+  document.getElementById('watchlist').innerHTML = '<div class="loading-state">Loading...</div>';
+  hideResults();
+  document.getElementById('searchInput').value = '';
+  isRefreshing = false;
+  if (mode === 'tv') { loadTvList(); } else { loadList(); }
+}
+
+// ── Switch movie list ────────────────────────────────────────────────────────
 async function switchList(list) {
-  if (list === activeList) return;
+  if (activeMode !== 'movies' || list === activeList) return;
   activeList = list;
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.sub-tab').forEach(t => t.classList.remove('active'));
   document.getElementById('tab-' + list).classList.add('active');
   movies = [];
   sortBy = 'added';
@@ -310,34 +390,60 @@ async function switchList(list) {
   await loadList();
 }
 
-// ── Load list ─────────────────────────────────────────────────────────────────
+// ── Load movie list ──────────────────────────────────────────────────────────
 async function loadList() {
   try {
     const rows = await sheetGet();
     movies = rows.map(r => ({
-      title: r.title || '',
-      year: r.year || '',
-      posterUrl: r.posterUrl || '',
-      streaming: parseStreaming(r.streaming),
-      streamingRaw: parseStreaming(r.streaming),
-      lastChecked: r.lastChecked || null,
-      rating: r.rating || '',
-      csmRating: r.csmRating || '',
-      parentsRating: r.parentsRating || '',
-      imdbId: r.imdbId || '',
-      rtScore: r.rtScore || '',
-      imdbScore: r.imdbScore || '',
-      mcScore: r.mcScore || '',
+      title: r.title || '', year: r.year || '', posterUrl: r.posterUrl || '',
+      streaming: parseStreaming(r.streaming), lastChecked: r.lastChecked || null,
+      rating: r.rating || '', csmRating: r.csmRating || '', parentsRating: r.parentsRating || '',
+      imdbId: r.imdbId || '', rtScore: r.rtScore || '', imdbScore: r.imdbScore || '', mcScore: r.mcScore || '',
     }));
-    renderWatchlist();
-    refreshAll(false);
+    render();
+    refreshMovies(false);
   } catch(e) {
     document.getElementById('watchlist').innerHTML =
       '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Could not load list.<br>Check your Apps Script deployment.</div></div>';
   }
 }
 
-// ── Streaming API ─────────────────────────────────────────────────────────────
+// ── Load TV list ─────────────────────────────────────────────────────────────
+async function loadTvList() {
+  try {
+    const rows = await sheetGet();
+    tvShows = rows.map(r => ({
+      title: r.title || '', firstAirYear: r.firstAirYear || '', posterUrl: r.posterUrl || '',
+      streaming: parseStreaming(r.streaming), lastChecked: r.lastChecked || null,
+      tmdbId: r.tmdbId || '', imdbId: r.imdbId || '',
+      totalSeasons: parseInt(r.totalSeasons) || 0,
+      seasonsWatched: parseSeasonsWatched(r.seasonsWatched),
+      seasons: [], // populated on refresh
+      status: r.status || '',
+      rtScore: r.rtScore || '', imdbScore: r.imdbScore || '', mcScore: r.mcScore || '',
+    }));
+    render();
+    // Fetch season details from TMDB for all shows (not stored in sheet)
+    const showsWithTmdb = tvShows.filter(s => s.tmdbId);
+    if (showsWithTmdb.length) {
+      await Promise.all(showsWithTmdb.map(async s => {
+        try {
+          const details = await getTvDetails(s.tmdbId);
+          s.seasons = details.seasons;
+          s.totalSeasons = details.totalSeasons;
+          s.status = details.status;
+        } catch(e) {}
+      }));
+      render();
+    }
+    refreshTvShows(false);
+  } catch(e) {
+    document.getElementById('watchlist').innerHTML =
+      '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Could not load TV list.<br>Check your Apps Script deployment.</div></div>';
+  }
+}
+
+// ── Streaming APIs ───────────────────────────────────────────────────────────
 async function getStreamingAvailability(title) {
   const params = new URLSearchParams({ title, country: 'us', show_type: 'movie', output_language: 'en' });
   try {
@@ -347,19 +453,42 @@ async function getStreamingAvailability(title) {
     const data = await res.json();
     if (!data || !data.length) return [];
     const options = data[0].streamingOptions?.us || [];
-    const TYPE_PRIORITY = { subscription: 0, free: 1, rent: 2, buy: 3 };
     const best = {};
     for (const opt of options) {
       const id = opt?.service?.id;
       const type = opt?.type || 'subscription';
       if (id && SERVICE_MAP[id]) {
-        if (!best[id] || TYPE_PRIORITY[type] < TYPE_PRIORITY[best[id]]) {
-          best[id] = type;
-        }
+        if (!best[id] || TYPE_PRIORITY[type] < TYPE_PRIORITY[best[id]]) best[id] = type;
       }
     }
     return Object.entries(best).map(([id, type]) => ({ id, type }));
   } catch(e) { return []; }
+}
+
+async function getTmdbWatchProviders(tmdbId, mediaType) {
+  const path = mediaType === 'tv' ? 'tv' : 'movie';
+  try {
+    const res = await fetch('https://api.themoviedb.org/3/' + path + '/' + tmdbId + '/watch/providers?api_key=' + TMDB_KEY);
+    const data = await res.json();
+    const us = data.results?.US || {};
+    const catMap = { flatrate: 'subscription', free: 'free', rent: 'rent', buy: 'buy' };
+    const best = {};
+    for (const [cat, type] of Object.entries(catMap)) {
+      for (const p of (us[cat] || [])) {
+        const id = TMDB_PROVIDER_MAP[p.provider_id];
+        if (id && (!best[id] || TYPE_PRIORITY[type] < TYPE_PRIORITY[best[id]])) best[id] = type;
+      }
+    }
+    return Object.entries(best).map(([id, type]) => ({ id, type }));
+  } catch(e) { return []; }
+}
+
+function mergeStreaming(rapidServices, tmdbServices) {
+  const best = {};
+  for (const { id, type } of [...rapidServices, ...tmdbServices]) {
+    if (!best[id] || TYPE_PRIORITY[type] < TYPE_PRIORITY[best[id]]) best[id] = type;
+  }
+  return Object.entries(best).map(([id, type]) => ({ id, type }));
 }
 
 // ── CSM Rating ────────────────────────────────────────────────────────────────
@@ -372,7 +501,7 @@ async function fetchCsmRatings(title, year) {
   } catch(e) { return { csmRating: '', parentsRating: '' }; }
 }
 
-// ── IMDB ID + Rotten Tomatoes ─────────────────────────────────────────────────
+// ── IMDB + Scores (movies) ───────────────────────────────────────────────────
 async function getImdbData(tmdbId) {
   try {
     const res = await fetch('https://api.themoviedb.org/3/movie/' + tmdbId + '?api_key=' + TMDB_KEY);
@@ -396,7 +525,7 @@ async function getImdbData(tmdbId) {
   } catch(e) { return { imdbId: '', rtScore: '', imdbScore: '', mcScore: '' }; }
 }
 
-// ── TMDB Rating ───────────────────────────────────────────────────────────────
+// ── TMDB helpers ─────────────────────────────────────────────────────────────
 async function getMpaaRating(tmdbId) {
   try {
     const res = await fetch('https://api.themoviedb.org/3/movie/' + tmdbId + '/release_dates?api_key=' + TMDB_KEY);
@@ -407,26 +536,6 @@ async function getMpaaRating(tmdbId) {
   } catch(e) { return ''; }
 }
 
-async function getTmdbWatchProviders(tmdbId) {
-  try {
-    const res = await fetch('https://api.themoviedb.org/3/movie/' + tmdbId + '/watch/providers?api_key=' + TMDB_KEY);
-    const data = await res.json();
-    const us = data.results?.US || {};
-    const TYPE_PRIORITY = { subscription: 0, free: 1, rent: 2, buy: 3 };
-    const catMap = { flatrate: 'subscription', free: 'free', rent: 'rent', buy: 'buy' };
-    const best = {};
-    for (const [cat, type] of Object.entries(catMap)) {
-      for (const p of (us[cat] || [])) {
-        const id = TMDB_PROVIDER_MAP[p.provider_id];
-        if (id && (!best[id] || TYPE_PRIORITY[type] < TYPE_PRIORITY[best[id]])) {
-          best[id] = type;
-        }
-      }
-    }
-    return Object.entries(best).map(([id, type]) => ({ id, type }));
-  } catch(e) { return []; }
-}
-
 async function getTmdbId(title, year) {
   try {
     const res = await fetch('https://api.themoviedb.org/3/search/movie?api_key=' + TMDB_KEY + '&query=' + encodeURIComponent(title) + (year ? '&year=' + year : '') + '&language=en-US&page=1');
@@ -435,11 +544,81 @@ async function getTmdbId(title, year) {
   } catch(e) { return null; }
 }
 
-// ── TMDB Search ───────────────────────────────────────────────────────────────
+// ── TV-specific APIs ─────────────────────────────────────────────────────────
+async function getTvDetails(tmdbId) {
+  try {
+    const res = await fetch('https://api.themoviedb.org/3/tv/' + tmdbId + '?api_key=' + TMDB_KEY);
+    const data = await res.json();
+    const today = new Date().toISOString().split('T')[0];
+    const seasons = (data.seasons || [])
+      .filter(s => s.season_number > 0)
+      .map(s => ({
+        number: s.season_number,
+        name: s.name || 'Season ' + s.season_number,
+        episodeCount: s.episode_count || 0,
+        airDate: s.air_date || null,
+        aired: s.air_date && s.air_date <= today && s.episode_count > 0,
+      }));
+    return {
+      seasons,
+      status: data.status || '',
+      totalSeasons: seasons.filter(s => s.aired).length,
+    };
+  } catch(e) { return { seasons: [], status: '', totalSeasons: 0 }; }
+}
+
+async function getTvExternalIds(tmdbId) {
+  try {
+    const res = await fetch('https://api.themoviedb.org/3/tv/' + tmdbId + '/external_ids?api_key=' + TMDB_KEY);
+    const data = await res.json();
+    return data.imdb_id || '';
+  } catch(e) { return ''; }
+}
+
+async function getOmdbScores(imdbId) {
+  if (!OMDB_KEY || !imdbId) return { rtScore: '', imdbScore: '', mcScore: '' };
+  try {
+    const res = await fetch('https://www.omdbapi.com/?i=' + imdbId + '&apikey=' + OMDB_KEY);
+    const data = await res.json();
+    const ratings = data.Ratings || [];
+    const rt = ratings.find(r => r.Source === 'Rotten Tomatoes');
+    const imdb = ratings.find(r => r.Source === 'Internet Movie Database');
+    const mc = ratings.find(r => r.Source === 'Metacritic');
+    return {
+      rtScore: rt ? rt.Value.replace('%', '') : '',
+      imdbScore: imdb ? imdb.Value.replace('/10', '') : '',
+      mcScore: mc ? mc.Value.replace('/100', '') : '',
+    };
+  } catch(e) { return { rtScore: '', imdbScore: '', mcScore: '' }; }
+}
+
+// ── TV caught-up logic ───────────────────────────────────────────────────────
+function isCaughtUp(show) {
+  const aired = (show.seasons || []).filter(s => s.aired);
+  if (!aired.length) return false;
+  return aired.every(s => show.seasonsWatched.includes(s.number));
+}
+
+function getUpcomingSeason(show) {
+  const upcoming = (show.seasons || []).find(s => s.number > 0 && !s.aired);
+  if (!upcoming) return null;
+  return upcoming;
+}
+
+// ── Search ───────────────────────────────────────────────────────────────────
 async function searchMovies(query) {
   if (!query.trim()) { hideResults(); return; }
   try {
     const res = await fetch('https://api.themoviedb.org/3/search/movie?api_key=' + TMDB_KEY + '&query=' + encodeURIComponent(query) + '&language=en-US&page=1');
+    const data = await res.json();
+    showResults((data.results || []).slice(0, 4));
+  } catch(e) { showStatus('Search failed', 'error'); }
+}
+
+async function searchTvShows(query) {
+  if (!query.trim()) { hideResults(); return; }
+  try {
+    const res = await fetch('https://api.themoviedb.org/3/search/tv?api_key=' + TMDB_KEY + '&query=' + encodeURIComponent(query) + '&language=en-US&page=1');
     const data = await res.json();
     showResults((data.results || []).slice(0, 4));
   } catch(e) { showStatus('Search failed', 'error'); }
@@ -452,13 +631,16 @@ function showResults(results) {
     el.classList.add('visible');
     return;
   }
+  const isTv = activeMode === 'tv';
   el.innerHTML = results.map((m, i) => {
-    const year = m.release_date ? m.release_date.substring(0,4) : '';
+    const title = isTv ? m.name : m.title;
+    const dateField = isTv ? m.first_air_date : m.release_date;
+    const year = dateField ? dateField.substring(0, 4) : '';
     const poster = m.poster_path
       ? '<img class="result-poster" src="https://image.tmdb.org/t/p/w92' + m.poster_path + '" alt="">'
-      : '<div class="result-poster-placeholder">🎬</div>';
+      : '<div class="result-poster-placeholder">' + (isTv ? '📺' : '🎬') + '</div>';
     return '<div class="result-item" data-idx="' + i + '">' + poster +
-      '<div class="result-info"><div class="result-title">' + m.title + '</div><div class="result-year">' + year + '</div></div>' +
+      '<div class="result-info"><div class="result-title">' + title + '</div><div class="result-year">' + year + '</div></div>' +
       '<div class="result-add">+ Add</div></div>';
   }).join('');
   el._results = results;
@@ -478,11 +660,16 @@ document.getElementById('results').addEventListener('click', function(e) {
   const results = this._results || [];
   if (!results[idx]) return;
   const m = results[idx];
-  const year = m.release_date ? m.release_date.substring(0,4) : '';
-  addMovie(m.title, year, m.poster_path || '', m.id);
+  if (activeMode === 'tv') {
+    const year = m.first_air_date ? m.first_air_date.substring(0, 4) : '';
+    addTvShow(m.name, year, m.poster_path || '', m.id);
+  } else {
+    const year = m.release_date ? m.release_date.substring(0, 4) : '';
+    addMovie(m.title, year, m.poster_path || '', m.id);
+  }
 });
 
-// ── Add movie ─────────────────────────────────────────────────────────────────
+// ── Add movie ────────────────────────────────────────────────────────────────
 async function addMovie(title, year, posterPath, tmdbId) {
   hideResults();
   document.getElementById('searchInput').value = '';
@@ -492,22 +679,17 @@ async function addMovie(title, year, posterPath, tmdbId) {
   const posterUrl = posterPath ? 'https://image.tmdb.org/t/p/w342' + posterPath : '';
   const movie = { title, year, posterUrl, streaming: null, lastChecked: null, rating: '', csmRating: '', parentsRating: '', imdbId: '', rtScore: '', imdbScore: '', mcScore: '' };
   movies.unshift(movie);
-  renderWatchlist();
+  render();
   showStatus('Adding ' + title + '...');
 
   const [rapidServices, tmdbServices, rating, csmRatings, imdbData] = await Promise.all([
     getStreamingAvailability(title),
-    tmdbId ? getTmdbWatchProviders(tmdbId) : Promise.resolve([]),
+    tmdbId ? getTmdbWatchProviders(tmdbId, 'movie') : Promise.resolve([]),
     tmdbId ? getMpaaRating(tmdbId) : Promise.resolve(''),
     activeList === 'kids' ? fetchCsmRatings(title, year) : Promise.resolve({ csmRating: '', parentsRating: '' }),
     tmdbId ? getImdbData(tmdbId) : Promise.resolve({ imdbId: '', rtScore: '' })
   ]);
-  const TYPE_PRIORITY = { subscription: 0, free: 1, rent: 2, buy: 3 };
-  const best = {};
-  for (const { id, type } of [...rapidServices, ...tmdbServices]) {
-    if (!best[id] || TYPE_PRIORITY[type] < TYPE_PRIORITY[best[id]]) best[id] = type;
-  }
-  const services = Object.entries(best).map(([id, type]) => ({ id, type }));
+  const services = mergeStreaming(rapidServices, tmdbServices);
   movie.streaming = services;
   movie.rating = rating;
   movie.csmRating = csmRatings.csmRating;
@@ -520,35 +702,99 @@ async function addMovie(title, year, posterPath, tmdbId) {
 
   try {
     await sheetAdd({
-      title, year, posterUrl,
-      streaming: JSON.stringify(services),
-      lastChecked: movie.lastChecked,
-      rating,
-      csmRating: movie.csmRating,
-      parentsRating: movie.parentsRating,
-      imdbId: movie.imdbId,
-      rtScore: movie.rtScore,
-      imdbScore: movie.imdbScore,
-      mcScore: movie.mcScore
+      title, year, posterUrl, streaming: JSON.stringify(services), lastChecked: movie.lastChecked,
+      rating, csmRating: movie.csmRating, parentsRating: movie.parentsRating,
+      imdbId: movie.imdbId, rtScore: movie.rtScore, imdbScore: movie.imdbScore, mcScore: movie.mcScore
     });
     showStatus(title + ' added', 'success');
-  } catch(e) {
-    showStatus('Saved locally — sheet write failed', 'error');
-  }
-  renderWatchlist();
+  } catch(e) { showStatus('Saved locally — sheet write failed', 'error'); }
+  render();
 }
 
-// ── Remove movie ──────────────────────────────────────────────────────────────
-async function removeMovie(title) {
-  const i = movies.findIndex(m => m.title === title);
-  if (i === -1) return;
-  movies.splice(i, 1);
-  renderWatchlist();
+// ── Add TV show ──────────────────────────────────────────────────────────────
+async function addTvShow(title, firstAirYear, posterPath, tmdbId) {
+  hideResults();
+  document.getElementById('searchInput').value = '';
+  if (tvShows.find(s => s.title.toLowerCase() === title.toLowerCase())) {
+    showStatus(title + ' is already on your list'); return;
+  }
+  const posterUrl = posterPath ? 'https://image.tmdb.org/t/p/w342' + posterPath : '';
+  const show = { title, firstAirYear, posterUrl, streaming: null, lastChecked: null, tmdbId: String(tmdbId), imdbId: '', totalSeasons: 0, seasonsWatched: [], seasons: [], status: '', rtScore: '', imdbScore: '', mcScore: '' };
+  tvShows.unshift(show);
+  render();
+  showStatus('Adding ' + title + '...');
+
+  const [tvDetails, tmdbServices, imdbId] = await Promise.all([
+    getTvDetails(tmdbId),
+    getTmdbWatchProviders(tmdbId, 'tv'),
+    getTvExternalIds(tmdbId),
+  ]);
+  show.seasons = tvDetails.seasons;
+  show.totalSeasons = tvDetails.totalSeasons;
+  show.status = tvDetails.status;
+  show.streaming = tmdbServices;
+  show.imdbId = imdbId;
+  show.lastChecked = new Date().toISOString().split('T')[0];
+
+  if (imdbId) {
+    const scores = await getOmdbScores(imdbId);
+    show.rtScore = scores.rtScore;
+    show.imdbScore = scores.imdbScore;
+    show.mcScore = scores.mcScore;
+  }
+
+  try {
+    await sheetAdd({
+      title, firstAirYear, posterUrl, streaming: JSON.stringify(show.streaming),
+      lastChecked: show.lastChecked, tmdbId: String(tmdbId), imdbId: show.imdbId,
+      totalSeasons: show.totalSeasons, seasonsWatched: show.seasonsWatched.join(','),
+      status: show.status, rtScore: show.rtScore, imdbScore: show.imdbScore, mcScore: show.mcScore
+    });
+    showStatus(title + ' added', 'success');
+  } catch(e) { showStatus('Saved locally — sheet write failed', 'error'); }
+  render();
+}
+
+// ── Remove ───────────────────────────────────────────────────────────────────
+async function removeItem(title) {
+  if (activeMode === 'tv') {
+    const i = tvShows.findIndex(s => s.title === title);
+    if (i === -1) return;
+    tvShows.splice(i, 1);
+  } else {
+    const i = movies.findIndex(m => m.title === title);
+    if (i === -1) return;
+    movies.splice(i, 1);
+  }
+  render();
   await sheetRemove({ title });
 }
 
-// ── Refresh ───────────────────────────────────────────────────────────────────
-async function refreshAll(force) {
+// ── Toggle season watched ────────────────────────────────────────────────────
+async function toggleSeason(title, seasonNum) {
+  const show = tvShows.find(s => s.title === title);
+  if (!show) return;
+  const idx = show.seasonsWatched.indexOf(seasonNum);
+  if (idx >= 0) { show.seasonsWatched.splice(idx, 1); }
+  else { show.seasonsWatched.push(seasonNum); show.seasonsWatched.sort((a, b) => a - b); }
+  render();
+  await sheetUpdate({ title, seasonsWatched: show.seasonsWatched.join(',') });
+}
+
+function toggleSeasonList(title) {
+  const el = document.querySelector('.season-list[data-title="' + CSS.escape(title) + '"]');
+  const toggle = document.querySelector('.season-toggle[data-title="' + CSS.escape(title) + '"]');
+  if (el) el.classList.toggle('expanded');
+  if (toggle) toggle.classList.toggle('open');
+}
+
+// ── Refresh ──────────────────────────────────────────────────────────────────
+function handleRefresh() {
+  if (activeMode === 'tv') refreshTvShows(true);
+  else refreshMovies(true);
+}
+
+async function refreshMovies(force) {
   if (isRefreshing) return;
   isRefreshing = true;
   document.getElementById('refreshBtn').classList.add('spinning');
@@ -567,19 +813,12 @@ async function refreshAll(force) {
         const tmdbId = await getTmdbId(movie.title, movie.year);
         const [rapidServices, tmdbServices] = await Promise.all([
           getStreamingAvailability(movie.title),
-          tmdbId ? getTmdbWatchProviders(tmdbId) : Promise.resolve([]),
+          tmdbId ? getTmdbWatchProviders(tmdbId, 'movie') : Promise.resolve([]),
         ]);
-        const TYPE_PRIORITY = { subscription: 0, free: 1, rent: 2, buy: 3 };
-        const best = {};
-        for (const { id, type } of [...rapidServices, ...tmdbServices]) {
-          if (!best[id] || TYPE_PRIORITY[type] < TYPE_PRIORITY[best[id]]) best[id] = type;
-        }
-        const services = Object.entries(best).map(([id, type]) => ({ id, type }));
+        const services = mergeStreaming(rapidServices, tmdbServices);
         movie.streaming = services;
         movie.lastChecked = today;
-        if (!movie.rating && tmdbId) {
-          movie.rating = await getMpaaRating(tmdbId);
-        }
+        if (!movie.rating && tmdbId) movie.rating = await getMpaaRating(tmdbId);
         if ((!movie.imdbId || !movie.imdbScore) && tmdbId) {
           const imdbData = await getImdbData(tmdbId);
           movie.imdbId = imdbData.imdbId || movie.imdbId;
@@ -593,11 +832,54 @@ async function refreshAll(force) {
           movie.parentsRating = csmData.parentsRating || movie.parentsRating;
         }
         await sheetUpdate({ title: movie.title, streaming: JSON.stringify(services), lastChecked: today, rating: movie.rating || '', csmRating: movie.csmRating || '', parentsRating: movie.parentsRating || '', imdbId: movie.imdbId || '', rtScore: movie.rtScore || '', imdbScore: movie.imdbScore || '', mcScore: movie.mcScore || '' });
-      } catch(movieErr) {
-        console.warn('Refresh failed for: ' + movie.title, movieErr);
-      }
+      } catch(movieErr) { console.warn('Refresh failed for: ' + movie.title, movieErr); }
     }
-    renderWatchlist();
+    render();
+    showStatus('All updated', 'success');
+  } finally {
+    isRefreshing = false;
+    document.getElementById('refreshBtn').classList.remove('spinning');
+  }
+}
+
+async function refreshTvShows(force) {
+  if (isRefreshing) return;
+  isRefreshing = true;
+  document.getElementById('refreshBtn').classList.add('spinning');
+  const today = new Date().toISOString().split('T')[0];
+  const stale = tvShows.filter(s => force || !s.lastChecked || s.lastChecked < today || !s.imdbScore);
+  if (!stale.length) {
+    showStatus('All up to date', 'success');
+    isRefreshing = false;
+    document.getElementById('refreshBtn').classList.remove('spinning');
+    return;
+  }
+  showStatus('Checking ' + stale.length + ' show' + (stale.length !== 1 ? 's' : '') + '...');
+  try {
+    for (const show of stale) {
+      try {
+        const tmdbId = show.tmdbId;
+        if (!tmdbId) continue;
+        const [tvDetails, tmdbServices] = await Promise.all([
+          getTvDetails(tmdbId),
+          getTmdbWatchProviders(tmdbId, 'tv'),
+        ]);
+        show.seasons = tvDetails.seasons;
+        show.totalSeasons = tvDetails.totalSeasons;
+        show.status = tvDetails.status;
+        show.streaming = tmdbServices;
+        show.lastChecked = today;
+        if (!show.imdbId) show.imdbId = await getTvExternalIds(tmdbId);
+        if ((!show.imdbScore) && show.imdbId) {
+          const scores = await getOmdbScores(show.imdbId);
+          show.rtScore = scores.rtScore || show.rtScore;
+          show.imdbScore = scores.imdbScore || show.imdbScore;
+          show.mcScore = scores.mcScore || show.mcScore;
+        }
+        await sheetUpdate({ title: show.title, streaming: JSON.stringify(show.streaming), lastChecked: today, totalSeasons: show.totalSeasons, status: show.status, imdbId: show.imdbId || '', rtScore: show.rtScore || '', imdbScore: show.imdbScore || '', mcScore: show.mcScore || '' });
+      } catch(err) { console.warn('Refresh failed for: ' + show.title, err); }
+    }
+    render();
     showStatus('All updated', 'success');
   } finally {
     isRefreshing = false;
@@ -622,63 +904,59 @@ function costLabel(type) {
   return '';
 }
 
-function renderWatchlist() {
+function renderStreamingBadges(streaming) {
+  if (streaming === null) return '<span class="checking-badge">Checking...</span>';
+  if (!streaming || !streaming.length) return '<span class="badge badge-none">Not streaming</span>';
+  return streaming.map(s => {
+    const id = typeof s === 'object' ? s.id : s;
+    const type = typeof s === 'object' ? s.type : 'subscription';
+    const svc = SERVICE_MAP[id];
+    if (!svc) return '';
+    return '<span class="badge ' + svc.cls + '">' + svc.label + costLabel(type) + '</span>';
+  }).join('');
+}
+
+function renderScoreOverlay(item) {
+  let badges = '';
+  const rtVal = formatRt(item.rtScore);
+  if (rtVal) badges += '<span class="score-badge ' + (parseInt(rtVal) >= 60 ? 'score-rt-fresh' : 'score-rt-rotten') + '">RT ' + rtVal + '</span>';
+  const imdbVal = item.imdbScore ? parseFloat(item.imdbScore) : 0;
+  if (imdbVal) badges += '<span class="score-badge score-imdb">IMDb ' + imdbVal + '</span>';
+  const mcVal = formatRt(item.mcScore);
+  if (mcVal) badges += '<span class="score-badge score-mc">MC ' + mcVal + '</span>';
+  return badges ? '<div class="score-overlay">' + badges + '</div>' : '';
+}
+
+function render() {
+  if (activeMode === 'tv') renderTvWatchlist();
+  else renderMovieWatchlist();
+}
+
+function renderMovieWatchlist() {
   const el = document.getElementById('watchlist');
   const countEl = document.getElementById('filterCount');
-
   if (!movies.length) {
     if (countEl) countEl.textContent = '';
     el.innerHTML = '<div class="empty-state"><div class="empty-icon">🎬</div><div class="empty-text">Search for a movie above<br>to add it to your list</div></div>';
     return;
   }
-
-  const filtered = filteredMovies();
-  if (countEl) {
-    countEl.textContent = filterService !== 'all' ? 'Showing ' + filtered.length + ' of ' + movies.length : '';
-  }
-
+  const filtered = filterByStreaming(movies);
+  if (countEl) countEl.textContent = filterService !== 'all' ? 'Showing ' + filtered.length + ' of ' + movies.length : '';
   if (movies.length && !filtered.length) {
     el.innerHTML = '<div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-text">No movies match this filter<br><a href="#" onclick="setFilter(\'all\');return false" style="color:var(--accent)">Clear filter</a></div></div>';
     return;
   }
-
-  el.innerHTML = sortedMovies().map((m, i) => {
+  el.innerHTML = sortedMovies().map(m => {
     let poster = m.posterUrl
       ? '<img class="movie-poster" src="' + m.posterUrl + '" alt="' + m.title + '" loading="lazy">'
       : '<div class="movie-poster-placeholder">🎬</div>';
     if (m.imdbId) poster = '<a href="https://www.imdb.com/title/' + m.imdbId + '" target="_blank" rel="noopener">' + poster + '</a>';
-
-    let badges = '';
-    if (m.streaming === null) {
-      badges = '<span class="checking-badge">Checking...</span>';
-    } else if (!m.streaming || !m.streaming.length) {
-      badges = '<span class="badge badge-none">Not streaming</span>';
-    } else {
-      badges = m.streaming.map(s => {
-        const id = typeof s === 'object' ? s.id : s;
-        const type = typeof s === 'object' ? s.type : 'subscription';
-        const svc = SERVICE_MAP[id];
-        if (!svc) return '';
-        return '<span class="badge ' + svc.cls + '">' + svc.label + costLabel(type) + '</span>';
-      }).join('');
-    }
-
     const titleHtml = m.imdbId
       ? '<a href="https://www.imdb.com/title/' + m.imdbId + '" target="_blank" rel="noopener">' + m.title + '</a>'
       : m.title;
-    let scoreBadges = '';
-    const rtVal = formatRt(m.rtScore);
-    if (rtVal) scoreBadges += '<span class="score-badge ' + (parseInt(rtVal) >= 60 ? 'score-rt-fresh' : 'score-rt-rotten') + '">RT ' + rtVal + '</span>';
-    const imdbVal = m.imdbScore ? parseFloat(m.imdbScore) : 0;
-    if (imdbVal) scoreBadges += '<span class="score-badge score-imdb">IMDb ' + imdbVal + '</span>';
-    const mcVal = formatRt(m.mcScore);
-    if (mcVal) scoreBadges += '<span class="score-badge score-mc">MC ' + mcVal + '</span>';
-    const scoreOverlay = scoreBadges ? '<div class="score-overlay">' + scoreBadges + '</div>' : '';
-
     return '<div class="movie-card">' +
-      '<button class="remove-btn" onclick="removeMovie(' + JSON.stringify(m.title).replace(/"/g, '&quot;') + ')">×</button>' +
-      scoreOverlay +
-      poster +
+      '<button class="remove-btn" onclick="removeItem(' + JSON.stringify(m.title).replace(/"/g, '&quot;') + ')">×</button>' +
+      renderScoreOverlay(m) + poster +
       '<div class="movie-info">' +
         '<div class="movie-title">' + titleHtml + '</div>' +
         '<div class="movie-year">' + m.year +
@@ -686,7 +964,90 @@ function renderWatchlist() {
           (activeList === 'kids' && m.csmRating ? '<span class="csm-badge">CSM ' + m.csmRating + '</span>' : '') +
           (activeList === 'kids' && m.parentsRating ? '<span class="csm-badge">P ' + m.parentsRating + '</span>' : '') +
         '</div>' +
-        '<div class="streaming-badges">' + badges + '</div>' +
+        '<div class="streaming-badges">' + renderStreamingBadges(m.streaming) + '</div>' +
+      '</div></div>';
+  }).join('');
+}
+
+function renderTvWatchlist() {
+  const el = document.getElementById('watchlist');
+  const countEl = document.getElementById('filterCount');
+  if (!tvShows.length) {
+    if (countEl) countEl.textContent = '';
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">📺</div><div class="empty-text">Search for a TV show above<br>to add it to your list</div></div>';
+    return;
+  }
+  const filtered = filterByStreaming(tvShows);
+  if (countEl) countEl.textContent = filterService !== 'all' ? 'Showing ' + filtered.length + ' of ' + tvShows.length : '';
+  if (tvShows.length && !filtered.length) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-text">No shows match this filter<br><a href="#" onclick="setFilter(\'all\');return false" style="color:var(--accent)">Clear filter</a></div></div>';
+    return;
+  }
+  el.innerHTML = sortedTvShows().map(s => {
+    const caughtUp = isCaughtUp(s);
+    const upcoming = getUpcomingSeason(s);
+    const airedSeasons = (s.seasons || []).filter(ss => ss.aired);
+    const watchedCount = s.seasonsWatched.filter(n => airedSeasons.some(ss => ss.number === n)).length;
+
+    let poster = s.posterUrl
+      ? '<img class="movie-poster" src="' + s.posterUrl + '" alt="' + s.title + '" loading="lazy">'
+      : '<div class="movie-poster-placeholder">📺</div>';
+    if (s.imdbId) poster = '<a href="https://www.imdb.com/title/' + s.imdbId + '" target="_blank" rel="noopener">' + poster + '</a>';
+
+    const titleHtml = s.imdbId
+      ? '<a href="https://www.imdb.com/title/' + s.imdbId + '" target="_blank" rel="noopener">' + s.title + '</a>'
+      : s.title;
+
+    let statusBadge = '';
+    if (caughtUp) statusBadge = '<span class="show-status-badge status-caught-up">Caught up</span>';
+    else if (airedSeasons.length > watchedCount) statusBadge = '<span class="show-status-badge status-new-season">New season!</span>';
+
+    let upcomingText = '';
+    if (upcoming) {
+      if (upcoming.airDate) {
+        const d = new Date(upcoming.airDate + 'T00:00:00');
+        const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        upcomingText = '<div class="upcoming-text">S' + upcoming.number + ' premieres ' + monthNames[d.getMonth()] + ' ' + d.getFullYear() + '</div>';
+      } else {
+        upcomingText = '<div class="upcoming-text">S' + upcoming.number + ' announced</div>';
+      }
+    }
+
+    const titleJs = JSON.stringify(s.title).replace(/"/g, '&quot;');
+    const titleAttr = s.title.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    const chevron = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 18l6-6-6-6"/></svg>';
+    const seasonToggle = airedSeasons.length > 0
+      ? '<div class="season-toggle" data-title="' + titleAttr + '" onclick="toggleSeasonList(' + titleJs + ')">' + chevron + ' <span class="season-progress">' + watchedCount + '/' + airedSeasons.length + ' seasons</span></div>'
+      : '';
+
+    let seasonListHtml = '';
+    if (s.seasons && s.seasons.length) {
+      seasonListHtml = '<div class="season-list" data-title="' + titleAttr + '">';
+      for (const ss of s.seasons) {
+        if (ss.aired) {
+          const checked = s.seasonsWatched.includes(ss.number) ? ' checked' : '';
+          seasonListHtml += '<label class="season-item"><input type="checkbox"' + checked + ' onchange="toggleSeason(' + titleJs + ',' + ss.number + ')"> S' + ss.number + ' · ' + ss.episodeCount + ' episodes</label>';
+        } else if (ss.airDate || ss.episodeCount === 0) {
+          seasonListHtml += '<div class="season-item upcoming">S' + ss.number + ' · Coming soon</div>';
+        }
+      }
+      seasonListHtml += '</div>';
+    }
+
+    const statusText = s.status === 'Ended' || s.status === 'Canceled' ? s.status : (s.status === 'Returning Series' ? 'Returning' : s.status);
+
+    return '<div class="movie-card' + (caughtUp ? ' caught-up' : '') + '">' +
+      '<button class="remove-btn" onclick="removeItem(' + titleJs + ')">×</button>' +
+      renderScoreOverlay(s) + poster +
+      '<div class="movie-info">' +
+        '<div class="movie-title">' + titleHtml + '</div>' +
+        '<div class="movie-year">' + (s.firstAirYear || '') +
+          (statusText ? '<span class="rating-badge">' + statusText + '</span>' : '') +
+          ' ' + statusBadge +
+        '</div>' +
+        upcomingText +
+        seasonToggle + seasonListHtml +
+        '<div class="streaming-badges">' + renderStreamingBadges(s.streaming) + '</div>' +
       '</div></div>';
   }).join('');
 }
@@ -696,7 +1057,8 @@ document.getElementById('searchInput').addEventListener('input', e => {
   clearTimeout(searchTimer);
   const val = e.target.value.trim();
   if (!val) { hideResults(); return; }
-  searchTimer = setTimeout(() => searchMovies(val), 350);
+  const fn = activeMode === 'tv' ? searchTvShows : searchMovies;
+  searchTimer = setTimeout(() => fn(val), 350);
 });
 
 document.addEventListener('click', e => {
