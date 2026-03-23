@@ -60,7 +60,7 @@
   .movie-poster-placeholder { width: 100%; aspect-ratio: 2/3; background: var(--surface2); display: flex; align-items: center; justify-content: center; font-size: 32px; }
   .movie-info { padding: 10px 12px 12px; }
   .movie-title { font-weight: 500; font-size: 13px; line-height: 1.3; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .movie-year { font-size: 11px; color: var(--muted); margin-bottom: 8px; display: flex; align-items: center; gap: 5px; }
+  .movie-year { font-size: 11px; color: var(--muted); margin-bottom: 8px; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
   .rating-badge { font-size: 9px; font-weight: 600; color: var(--muted); border: 1px solid rgba(255,255,255,0.15); border-radius: 3px; padding: 1px 4px; letter-spacing: 0.3px; flex-shrink: 0; }
   .csm-badge { font-size: 9px; font-weight: 600; color: #4db880; border: 1px solid rgba(77,184,128,0.3); border-radius: 3px; padding: 1px 4px; letter-spacing: 0.3px; flex-shrink: 0; }
   .streaming-badges { display: flex; flex-wrap: wrap; gap: 4px; min-height: 20px; }
@@ -89,9 +89,9 @@
   .sort-btn { background: none; border: 1px solid var(--border); border-radius: 99px; padding: 5px 12px; font-family: 'DM Sans', sans-serif; font-size: 11px; font-weight: 500; color: var(--muted); cursor: pointer; transition: all 0.2s; letter-spacing: 0.3px; }
   .sort-btn.active { border-color: rgba(232,197,71,0.4); color: var(--accent); }
   .sort-btn:hover:not(.active) { border-color: rgba(255,255,255,0.15); color: var(--text); }
-  .rt-badge { font-size: 9px; font-weight: 600; border-radius: 3px; padding: 1px 4px; letter-spacing: 0.3px; flex-shrink: 0; }
-  .rt-fresh { color: #fa4a2a; border: 1px solid rgba(250,74,42,0.3); }
-  .rt-rotten { color: var(--muted); border: 1px solid rgba(255,255,255,0.15); }
+  .rt-overlay { position: absolute; top: 8px; left: 8px; font-size: 10px; font-weight: 700; padding: 3px 6px; border-radius: 4px; backdrop-filter: blur(4px); z-index: 1; line-height: 1; }
+  .rt-fresh { background: rgba(250,74,42,0.9); color: #fff; }
+  .rt-rotten { background: rgba(0,0,0,0.65); color: rgba(255,255,255,0.7); }
   .movie-title a { color: inherit; text-decoration: none; transition: color 0.15s; }
   .movie-title a:hover { color: var(--accent); }
   .tabs { display: flex; gap: 6px; padding: 0 24px 16px; }
@@ -332,7 +332,7 @@ async function getImdbData(tmdbId) {
         const omdb = await fetch('https://www.omdbapi.com/?i=' + imdbId + '&apikey=' + OMDB_KEY);
         const omdbData = await omdb.json();
         const rt = (omdbData.Ratings || []).find(r => r.Source === 'Rotten Tomatoes');
-        if (rt) rtScore = rt.Value; // e.g. "85%"
+        if (rt) rtScore = rt.Value.replace('%', ''); // store "85" not "85%" (Sheets converts % to decimal)
       } catch(e) {}
     }
     return { imdbId, rtScore };
@@ -485,7 +485,7 @@ async function refreshAll(force) {
   isRefreshing = true;
   document.getElementById('refreshBtn').classList.add('spinning');
   const today = new Date().toISOString().split('T')[0];
-  const stale = movies.filter(m => force || !m.lastChecked || m.lastChecked < today || !m.rating || !m.imdbId || (activeList === 'kids' && (!m.csmRating || !m.parentsRating)));
+  const stale = movies.filter(m => force || !m.lastChecked || m.lastChecked < today || !m.rating || (activeList === 'kids' && (!m.csmRating || !m.parentsRating)));
   if (!stale.length) {
     showStatus('All up to date', 'success');
     isRefreshing = false;
@@ -530,6 +530,15 @@ async function refreshAll(force) {
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
+function formatRt(val) {
+  if (!val && val !== 0) return '';
+  const n = parseFloat(val);
+  if (isNaN(n)) return '';
+  if (n > 0 && n < 1) return Math.round(n * 100) + '%';
+  if (n >= 1 && n <= 100) return Math.round(n) + '%';
+  return '';
+}
+
 function costLabel(type) {
   if (type === 'rent') return '<span class="badge-cost">RENT</span>';
   if (type === 'buy') return '<span class="badge-cost">BUY</span>';
@@ -546,9 +555,10 @@ function renderWatchlist() {
   }
 
   el.innerHTML = sortedMovies().map((m, i) => {
-    const poster = m.posterUrl
+    let poster = m.posterUrl
       ? '<img class="movie-poster" src="' + m.posterUrl + '" alt="' + m.title + '" loading="lazy">'
       : '<div class="movie-poster-placeholder">🎬</div>';
+    if (m.imdbId) poster = '<a href="https://www.imdb.com/title/' + m.imdbId + '" target="_blank" rel="noopener">' + poster + '</a>';
 
     let badges = '';
     if (m.streaming === null) {
@@ -568,20 +578,21 @@ function renderWatchlist() {
     const titleHtml = m.imdbId
       ? '<a href="https://www.imdb.com/title/' + m.imdbId + '" target="_blank" rel="noopener">' + m.title + '</a>'
       : m.title;
-    const rtBadge = m.rtScore
-      ? '<span class="rt-badge ' + (parseInt(m.rtScore) >= 60 ? 'rt-fresh' : 'rt-rotten') + '">' + m.rtScore + '</span>'
+    const rtVal = formatRt(m.rtScore);
+    const rtOverlay = rtVal
+      ? '<div class="rt-overlay ' + (parseInt(rtVal) >= 60 ? 'rt-fresh' : 'rt-rotten') + '">' + rtVal + '</div>'
       : '';
 
     return '<div class="movie-card">' +
       '<button class="remove-btn" onclick="removeMovie(' + JSON.stringify(m.title).replace(/"/g, '&quot;') + ')">×</button>' +
+      rtOverlay +
       poster +
       '<div class="movie-info">' +
         '<div class="movie-title">' + titleHtml + '</div>' +
         '<div class="movie-year">' + m.year +
           (m.rating ? '<span class="rating-badge">' + m.rating + '</span>' : '') +
-          rtBadge +
           (activeList === 'kids' && m.csmRating ? '<span class="csm-badge">CSM ' + m.csmRating + '</span>' : '') +
-          (activeList === 'kids' && m.parentsRating ? '<span class="csm-badge">Parents ' + m.parentsRating + '</span>' : '') +
+          (activeList === 'kids' && m.parentsRating ? '<span class="csm-badge">P ' + m.parentsRating + '</span>' : '') +
         '</div>' +
         '<div class="streaming-badges">' + badges + '</div>' +
       '</div></div>';
