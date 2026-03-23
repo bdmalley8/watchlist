@@ -138,6 +138,22 @@
   .status-caught-up { background: rgba(77,184,128,0.2); color: #4db880; }
   .status-new-season { background: rgba(232,197,71,0.2); color: var(--accent); }
   .upcoming-text { font-size: 10px; color: var(--accent2); font-style: italic; margin-top: 2px; }
+  /* Watched-by badge */
+  .watched-by-badge { font-size: 9px; font-weight: 600; padding: 1px 5px; border-radius: 3px; cursor: pointer; letter-spacing: 0.3px; flex-shrink: 0; user-select: none; -webkit-tap-highlight-color: transparent; transition: all 0.15s; }
+  .watched-by-badge:hover { opacity: 0.8; }
+  .wb-both { background: rgba(232,197,71,0.2); color: var(--accent); border: 1px solid rgba(232,197,71,0.3); }
+  .wb-bryan { background: rgba(91,141,239,0.2); color: #5b8def; border: 1px solid rgba(91,141,239,0.3); }
+  .wb-denae { background: rgba(200,100,200,0.2); color: #c888c8; border: 1px solid rgba(200,100,200,0.3); }
+  /* Viewer picker in search results */
+  .viewer-picker { display: flex; gap: 6px; padding: 12px 16px; border-top: 1px solid var(--border); align-items: center; }
+  .viewer-picker-label { font-size: 12px; color: var(--muted); margin-right: 2px; }
+  .viewer-picker-btn { background: none; border: 1px solid var(--border); border-radius: 99px; padding: 5px 12px; font-family: 'DM Sans', sans-serif; font-size: 11px; font-weight: 500; color: var(--muted); cursor: pointer; transition: all 0.2s; }
+  .viewer-picker-btn:hover { border-color: rgba(232,197,71,0.4); color: var(--accent); }
+  /* Viewer filter */
+  .viewer-filter-row { display: flex; gap: 6px; padding-top: 8px; }
+  .viewer-btn { background: none; border: 1px solid var(--border); border-radius: 99px; padding: 5px 12px; font-family: 'DM Sans', sans-serif; font-size: 11px; font-weight: 500; color: var(--muted); cursor: pointer; transition: all 0.2s; letter-spacing: 0.3px; }
+  .viewer-btn.active { border-color: rgba(232,197,71,0.4); color: var(--accent); }
+  .viewer-btn:hover:not(.active) { border-color: rgba(255,255,255,0.15); color: var(--text); }
 </style>
 </head>
 <body>
@@ -181,6 +197,12 @@
       <button class="filter-btn" data-val="prime" onclick="setFilter('prime')">Prime</button>
       <button class="filter-btn" data-val="peacock" onclick="setFilter('peacock')">Peacock</button>
     </div>
+    <div class="viewer-filter-row" id="viewerFilter" style="display:none">
+      <button class="viewer-btn active" data-val="all" onclick="setViewerFilter('all')">All</button>
+      <button class="viewer-btn" data-val="both" onclick="setViewerFilter('both')">Both</button>
+      <button class="viewer-btn" data-val="bryan" onclick="setViewerFilter('bryan')">Bryan</button>
+      <button class="viewer-btn" data-val="denae" onclick="setViewerFilter('denae')">Denae</button>
+    </div>
     <div class="filter-count" id="filterCount"></div>
   </div>
   <div class="watchlist" id="watchlist">
@@ -190,7 +212,7 @@
 <div class="status" id="status"></div>
 
 <script>
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyLFZYuPxcBVaUfrcSfiLu7ngQqg1vsNYlNKleMdZOzl3wdiaMtAA1cBjY77oMRKxMG2g/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxJ_-P5KBGLdoB6f0P1n0qYo7uXb2RDW-4GaT23FYWLO2fuKtXlm13PoeCWVO7DhjPvCg/exec';
 const RAPID_KEY  = '6843182acdmsh3606361dc74ed24p1b3afejsnf8eccf80e039';
 const TMDB_KEY   = 'cd13f611fe266eabec6fd4bd6495b74e';
 const OMDB_KEY   = 'd10ed96a';
@@ -243,7 +265,9 @@ let activeMode = 'movies';
 let activeList = 'family';
 let sortBy = 'added';
 let filterService = 'all';
+let filterViewer = 'all';
 let searchTimer = null;
+let pendingTvAdd = null; // holds {title, year, posterPath, tmdbId} while viewer picker is shown
 let isRefreshing = false;
 
 const RATING_ORDER = { 'G': 0, 'PG': 1, 'PG-13': 2, 'R': 3, 'NC-17': 4 };
@@ -264,17 +288,30 @@ function setFilter(val) {
   render();
 }
 
-function filterByStreaming(list) {
-  if (filterService === 'all') return list;
-  return list.filter(m => {
-    if (m.streaming === null) return true;
-    if (!m.streaming || !m.streaming.length) return false;
-    return m.streaming.some(s => (typeof s === 'object' ? s.id : s) === filterService);
-  });
+function setViewerFilter(val) {
+  filterViewer = val;
+  document.querySelectorAll('.viewer-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector('.viewer-btn[data-val="' + val + '"]').classList.add('active');
+  render();
+}
+
+function filterList(list) {
+  let result = list;
+  if (filterService !== 'all') {
+    result = result.filter(m => {
+      if (m.streaming === null) return true;
+      if (!m.streaming || !m.streaming.length) return false;
+      return m.streaming.some(s => (typeof s === 'object' ? s.id : s) === filterService);
+    });
+  }
+  if (filterViewer !== 'all' && activeMode === 'tv') {
+    result = result.filter(s => s.watchedBy === filterViewer);
+  }
+  return result;
 }
 
 function sortedMovies() {
-  const list = [...filterByStreaming(movies)];
+  const list = [...filterList(movies)];
   if (sortBy === 'az') return list.sort((a, b) => a.title.localeCompare(b.title));
   if (sortBy === 'year') return list.sort((a, b) => (parseInt(b.year) || 0) - (parseInt(a.year) || 0));
   if (sortBy === 'rating') return list.sort((a, b) => {
@@ -286,7 +323,7 @@ function sortedMovies() {
 }
 
 function sortedTvShows() {
-  const list = [...filterByStreaming(tvShows)];
+  const list = [...filterList(tvShows)];
   if (sortBy === 'az') return list.sort((a, b) => a.title.localeCompare(b.title));
   if (sortBy === 'next') {
     return list.sort((a, b) => {
@@ -344,6 +381,7 @@ function switchMode(mode) {
   document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
   document.getElementById('mode-' + mode).classList.add('active');
   document.getElementById('subTabs').style.display = mode === 'movies' ? 'flex' : 'none';
+  document.getElementById('viewerFilter').style.display = mode === 'tv' ? 'flex' : 'none';
   document.getElementById('searchInput').placeholder = mode === 'tv' ? 'Search for a TV show...' : 'Search for a movie...';
   // Swap sort buttons
   const sortBar = document.getElementById('sortBar');
@@ -359,8 +397,11 @@ function switchMode(mode) {
   }
   sortBy = 'added';
   filterService = 'all';
+  filterViewer = 'all';
   document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
   document.querySelector('.filter-btn[data-val="all"]').classList.add('active');
+  document.querySelectorAll('.viewer-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector('.viewer-btn[data-val="all"]').classList.add('active');
   document.getElementById('filterCount').textContent = '';
   document.getElementById('watchlist').innerHTML = '<div class="loading-state">Loading...</div>';
   hideResults();
@@ -420,6 +461,7 @@ async function loadTvList() {
       seasonsWatched: parseSeasonsWatched(r.seasonsWatched),
       seasons: [], // populated on refresh
       status: r.status || '',
+      watchedBy: r.watchedBy || 'both',
       rtScore: r.rtScore || '', imdbScore: r.imdbScore || '', mcScore: r.mcScore || '',
     }));
     render();
@@ -654,6 +696,15 @@ function hideResults() {
 }
 
 document.getElementById('results').addEventListener('click', function(e) {
+  // Handle viewer picker button click
+  const pickerBtn = e.target.closest('.viewer-picker-btn');
+  if (pickerBtn && pendingTvAdd) {
+    const viewer = pickerBtn.dataset.viewer;
+    const p = pendingTvAdd;
+    pendingTvAdd = null;
+    addTvShow(p.title, p.year, p.posterPath, p.tmdbId, viewer);
+    return;
+  }
   const item = e.target.closest('.result-item');
   if (!item) return;
   const idx = parseInt(item.dataset.idx);
@@ -662,7 +713,18 @@ document.getElementById('results').addEventListener('click', function(e) {
   const m = results[idx];
   if (activeMode === 'tv') {
     const year = m.first_air_date ? m.first_air_date.substring(0, 4) : '';
-    addTvShow(m.name, year, m.poster_path || '', m.id);
+    pendingTvAdd = { title: m.name, year, posterPath: m.poster_path || '', tmdbId: m.id };
+    // Show viewer picker inline
+    const existing = document.querySelector('.viewer-picker');
+    if (existing) existing.remove();
+    item.insertAdjacentHTML('afterend',
+      '<div class="viewer-picker">' +
+        '<span class="viewer-picker-label">Who watches?</span>' +
+        '<button class="viewer-picker-btn" data-viewer="both">Both</button>' +
+        '<button class="viewer-picker-btn" data-viewer="bryan">Bryan</button>' +
+        '<button class="viewer-picker-btn" data-viewer="denae">Denae</button>' +
+      '</div>'
+    );
   } else {
     const year = m.release_date ? m.release_date.substring(0, 4) : '';
     addMovie(m.title, year, m.poster_path || '', m.id);
@@ -712,14 +774,15 @@ async function addMovie(title, year, posterPath, tmdbId) {
 }
 
 // ── Add TV show ──────────────────────────────────────────────────────────────
-async function addTvShow(title, firstAirYear, posterPath, tmdbId) {
+async function addTvShow(title, firstAirYear, posterPath, tmdbId, watchedBy) {
   hideResults();
   document.getElementById('searchInput').value = '';
   if (tvShows.find(s => s.title.toLowerCase() === title.toLowerCase())) {
     showStatus(title + ' is already on your list'); return;
   }
+  watchedBy = watchedBy || 'both';
   const posterUrl = posterPath ? 'https://image.tmdb.org/t/p/w342' + posterPath : '';
-  const show = { title, firstAirYear, posterUrl, streaming: null, lastChecked: null, tmdbId: String(tmdbId), imdbId: '', totalSeasons: 0, seasonsWatched: [], seasons: [], status: '', rtScore: '', imdbScore: '', mcScore: '' };
+  const show = { title, firstAirYear, posterUrl, streaming: null, lastChecked: null, tmdbId: String(tmdbId), imdbId: '', totalSeasons: 0, seasonsWatched: [], seasons: [], status: '', watchedBy, rtScore: '', imdbScore: '', mcScore: '' };
   tvShows.unshift(show);
   render();
   showStatus('Adding ' + title + '...');
@@ -748,7 +811,7 @@ async function addTvShow(title, firstAirYear, posterPath, tmdbId) {
       title, firstAirYear, posterUrl, streaming: JSON.stringify(show.streaming),
       lastChecked: show.lastChecked, tmdbId: String(tmdbId), imdbId: show.imdbId,
       totalSeasons: show.totalSeasons, seasonsWatched: show.seasonsWatched.join(','),
-      status: show.status, rtScore: show.rtScore, imdbScore: show.imdbScore, mcScore: show.mcScore
+      status: show.status, watchedBy, rtScore: show.rtScore, imdbScore: show.imdbScore, mcScore: show.mcScore
     });
     showStatus(title + ' added', 'success');
   } catch(e) { showStatus('Saved locally — sheet write failed', 'error'); }
@@ -768,6 +831,17 @@ async function removeItem(title) {
   }
   render();
   await sheetRemove({ title });
+}
+
+// ── Cycle watched-by ─────────────────────────────────────────────────────────
+async function cycleWatchedBy(title) {
+  const show = tvShows.find(s => s.title === title);
+  if (!show) return;
+  const order = ['both', 'bryan', 'denae'];
+  const idx = order.indexOf(show.watchedBy);
+  show.watchedBy = order[(idx + 1) % order.length];
+  render();
+  await sheetUpdate({ title, watchedBy: show.watchedBy });
 }
 
 // ── Toggle season watched ────────────────────────────────────────────────────
@@ -940,7 +1014,7 @@ function renderMovieWatchlist() {
     el.innerHTML = '<div class="empty-state"><div class="empty-icon">🎬</div><div class="empty-text">Search for a movie above<br>to add it to your list</div></div>';
     return;
   }
-  const filtered = filterByStreaming(movies);
+  const filtered = filterList(movies);
   if (countEl) countEl.textContent = filterService !== 'all' ? 'Showing ' + filtered.length + ' of ' + movies.length : '';
   if (movies.length && !filtered.length) {
     el.innerHTML = '<div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-text">No movies match this filter<br><a href="#" onclick="setFilter(\'all\');return false" style="color:var(--accent)">Clear filter</a></div></div>';
@@ -977,8 +1051,9 @@ function renderTvWatchlist() {
     el.innerHTML = '<div class="empty-state"><div class="empty-icon">📺</div><div class="empty-text">Search for a TV show above<br>to add it to your list</div></div>';
     return;
   }
-  const filtered = filterByStreaming(tvShows);
-  if (countEl) countEl.textContent = filterService !== 'all' ? 'Showing ' + filtered.length + ' of ' + tvShows.length : '';
+  const filtered = filterList(tvShows);
+  const hasFilter = filterService !== 'all' || filterViewer !== 'all';
+  if (countEl) countEl.textContent = hasFilter ? 'Showing ' + filtered.length + ' of ' + tvShows.length : '';
   if (tvShows.length && !filtered.length) {
     el.innerHTML = '<div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-text">No shows match this filter<br><a href="#" onclick="setFilter(\'all\');return false" style="color:var(--accent)">Clear filter</a></div></div>';
     return;
@@ -1044,6 +1119,7 @@ function renderTvWatchlist() {
         '<div class="movie-year">' + (s.firstAirYear || '') +
           (statusText ? '<span class="rating-badge">' + statusText + '</span>' : '') +
           ' ' + statusBadge +
+          '<span class="watched-by-badge wb-' + (s.watchedBy || 'both') + '" onclick="cycleWatchedBy(' + titleJs + ')">' + ({both:'Both',bryan:'Bryan',denae:'Denae'}[s.watchedBy] || 'Both') + '</span>' +
         '</div>' +
         upcomingText +
         seasonToggle + seasonListHtml +
