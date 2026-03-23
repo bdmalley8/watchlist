@@ -132,8 +132,8 @@
   .season-item.upcoming { color: var(--muted); font-style: italic; }
   .season-progress { font-size: 10px; color: var(--muted); }
   /* Caught-up state */
-  .movie-card.caught-up { opacity: 0.4; filter: saturate(0.3); transition: opacity 0.3s, filter 0.3s; }
-  .movie-card.caught-up:hover { opacity: 0.7; filter: saturate(0.5); }
+  .movie-card.caught-up .movie-poster { opacity: 0.4; filter: saturate(0.3); transition: opacity 0.3s, filter 0.3s; }
+  .movie-card.caught-up:hover .movie-poster { opacity: 0.7; filter: saturate(0.5); }
   .show-status-badge { font-size: 8px; font-weight: 600; padding: 2px 6px; border-radius: 3px; letter-spacing: 0.3px; display: inline-block; }
   .status-caught-up { background: rgba(77,184,128,0.2); color: #4db880; }
   .status-new-season { background: rgba(232,197,71,0.2); color: var(--accent); }
@@ -268,6 +268,7 @@ let filterService = 'all';
 let filterViewer = 'all';
 let searchTimer = null;
 let pendingTvAdd = null; // holds {title, year, posterPath, tmdbId} while viewer picker is shown
+let expandedShows = new Set(); // tracks which shows have season list expanded
 let isRefreshing = false;
 
 const RATING_ORDER = { 'G': 0, 'PG': 1, 'PG-13': 2, 'R': 3, 'NC-17': 4 };
@@ -856,6 +857,8 @@ async function toggleSeason(title, seasonNum) {
 }
 
 function toggleSeasonList(title) {
+  if (expandedShows.has(title)) expandedShows.delete(title);
+  else expandedShows.add(title);
   const el = document.querySelector('.season-list[data-title="' + CSS.escape(title) + '"]');
   const toggle = document.querySelector('.season-toggle[data-title="' + CSS.escape(title) + '"]');
   if (el) el.classList.toggle('expanded');
@@ -1091,13 +1094,14 @@ function renderTvWatchlist() {
     const titleJs = JSON.stringify(s.title).replace(/"/g, '&quot;');
     const titleAttr = s.title.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
     const chevron = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 18l6-6-6-6"/></svg>';
+    const isExpanded = expandedShows.has(s.title);
     const seasonToggle = airedSeasons.length > 0
-      ? '<div class="season-toggle" data-title="' + titleAttr + '" onclick="toggleSeasonList(' + titleJs + ')">' + chevron + ' <span class="season-progress">' + watchedCount + '/' + airedSeasons.length + ' seasons</span></div>'
+      ? '<div class="season-toggle' + (isExpanded ? ' open' : '') + '" data-title="' + titleAttr + '" onclick="toggleSeasonList(' + titleJs + ')">' + chevron + ' <span class="season-progress">' + watchedCount + '/' + airedSeasons.length + ' seasons</span></div>'
       : '';
 
     let seasonListHtml = '';
     if (s.seasons && s.seasons.length) {
-      seasonListHtml = '<div class="season-list" data-title="' + titleAttr + '">';
+      seasonListHtml = '<div class="season-list' + (isExpanded ? ' expanded' : '') + '" data-title="' + titleAttr + '">';
       for (const ss of s.seasons) {
         if (ss.aired) {
           const checked = s.seasonsWatched.includes(ss.number) ? ' checked' : '';
