@@ -85,10 +85,24 @@
   .empty-icon { font-size: 40px; margin-bottom: 12px; opacity: 0.4; }
   .empty-text { font-size: 14px; line-height: 1.6; }
   .loading-state { grid-column: 1 / -1; text-align: center; padding: 48px 24px; color: var(--muted); font-size: 14px; }
-  .sort-bar { display: flex; gap: 6px; padding: 8px 24px 16px; }
+  .sort-bar { display: flex; gap: 6px; padding: 8px 24px 12px; }
   .sort-btn { background: none; border: 1px solid var(--border); border-radius: 99px; padding: 5px 12px; font-family: 'DM Sans', sans-serif; font-size: 11px; font-weight: 500; color: var(--muted); cursor: pointer; transition: all 0.2s; letter-spacing: 0.3px; }
   .sort-btn.active { border-color: rgba(232,197,71,0.4); color: var(--accent); }
   .sort-btn:hover:not(.active) { border-color: rgba(255,255,255,0.15); color: var(--text); }
+  .filter-bar { padding: 0 24px 14px; }
+  .filter-row { display: flex; gap: 6px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .filter-row::-webkit-scrollbar { display: none; }
+  .filter-btn { background: none; border: 1px solid var(--border); border-radius: 99px; padding: 5px 12px; font-family: 'DM Sans', sans-serif; font-size: 11px; font-weight: 500; color: var(--muted); cursor: pointer; transition: all 0.2s; letter-spacing: 0.3px; white-space: nowrap; flex-shrink: 0; }
+  .filter-btn.active { border-color: rgba(232,197,71,0.4); color: var(--accent); }
+  .filter-btn:hover:not(.active) { border-color: rgba(255,255,255,0.15); color: var(--text); }
+  .filter-btn[data-val="netflix"].active { border-color: rgba(229,9,20,0.5); color: #e55b64; }
+  .filter-btn[data-val="hbo"].active { border-color: rgba(110,70,220,0.5); color: #9b7fe8; }
+  .filter-btn[data-val="hulu"].active { border-color: rgba(28,218,117,0.5); color: #3dba7e; }
+  .filter-btn[data-val="disney"].active { border-color: rgba(17,60,207,0.5); color: #5b82e8; }
+  .filter-btn[data-val="apple"].active { border-color: rgba(255,255,255,0.3); color: rgba(255,255,255,0.7); }
+  .filter-btn[data-val="prime"].active { border-color: rgba(0,168,225,0.5); color: #4db8e0; }
+  .filter-btn[data-val="peacock"].active { border-color: rgba(255,140,0,0.5); color: #e8a040; }
+  .filter-count { font-size: 11px; color: var(--muted); padding-top: 6px; }
   .score-overlay { position: absolute; top: 8px; left: 8px; display: flex; gap: 3px; z-index: 1; }
   .score-badge { font-size: 9px; font-weight: 700; padding: 2px 5px; border-radius: 3px; backdrop-filter: blur(4px); line-height: 1; white-space: nowrap; }
   .score-rt-fresh { background: rgba(250,74,42,0.9); color: #fff; }
@@ -129,6 +143,19 @@
     <button class="sort-btn" id="sort-az" onclick="setSort('az')">A–Z</button>
     <button class="sort-btn" id="sort-year" onclick="setSort('year')">Year</button>
     <button class="sort-btn" id="sort-rating" onclick="setSort('rating')">Rating</button>
+  </div>
+  <div class="filter-bar">
+    <div class="filter-row">
+      <button class="filter-btn active" data-val="all" onclick="setFilter('all')">All</button>
+      <button class="filter-btn" data-val="netflix" onclick="setFilter('netflix')">Netflix</button>
+      <button class="filter-btn" data-val="hbo" onclick="setFilter('hbo')">Max</button>
+      <button class="filter-btn" data-val="hulu" onclick="setFilter('hulu')">Hulu</button>
+      <button class="filter-btn" data-val="disney" onclick="setFilter('disney')">Disney+</button>
+      <button class="filter-btn" data-val="apple" onclick="setFilter('apple')">Apple TV+</button>
+      <button class="filter-btn" data-val="prime" onclick="setFilter('prime')">Prime</button>
+      <button class="filter-btn" data-val="peacock" onclick="setFilter('peacock')">Peacock</button>
+    </div>
+    <div class="filter-count" id="filterCount"></div>
   </div>
   <div class="watchlist" id="watchlist">
     <div class="loading-state">Loading your list...</div>
@@ -182,6 +209,7 @@ function parseStreaming(val) {
 let movies = [];
 let activeList = 'family';
 let sortBy = 'added';
+let filterService = 'all';
 let searchTimer = null;
 let isRefreshing = false;
 
@@ -194,8 +222,24 @@ function setSort(val) {
   renderWatchlist();
 }
 
+function setFilter(val) {
+  filterService = val;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector('.filter-btn[data-val="' + val + '"]').classList.add('active');
+  renderWatchlist();
+}
+
+function filteredMovies() {
+  if (filterService === 'all') return movies;
+  return movies.filter(m => {
+    if (m.streaming === null) return true;
+    if (!m.streaming || !m.streaming.length) return false;
+    return m.streaming.some(s => (typeof s === 'object' ? s.id : s) === filterService);
+  });
+}
+
 function sortedMovies() {
-  const list = [...movies];
+  const list = [...filteredMovies()];
   if (sortBy === 'az') return list.sort((a, b) => a.title.localeCompare(b.title));
   if (sortBy === 'year') return list.sort((a, b) => (parseInt(b.year) || 0) - (parseInt(a.year) || 0));
   if (sortBy === 'rating') return list.sort((a, b) => {
@@ -254,8 +298,12 @@ async function switchList(list) {
   document.getElementById('tab-' + list).classList.add('active');
   movies = [];
   sortBy = 'added';
+  filterService = 'all';
   document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('sort-added').classList.add('active');
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector('.filter-btn[data-val="all"]').classList.add('active');
+  document.getElementById('filterCount').textContent = '';
   document.getElementById('watchlist').innerHTML = '<div class="loading-state">Loading your list...</div>';
   hideResults();
   document.getElementById('searchInput').value = '';
@@ -499,7 +547,7 @@ async function refreshAll(force) {
   isRefreshing = true;
   document.getElementById('refreshBtn').classList.add('spinning');
   const today = new Date().toISOString().split('T')[0];
-  const stale = movies.filter(m => force || !m.lastChecked || m.lastChecked < today || !m.rating || (activeList === 'kids' && (!m.csmRating || !m.parentsRating)));
+  const stale = movies.filter(m => force || !m.lastChecked || m.lastChecked < today || !m.rating || !m.imdbScore || (activeList === 'kids' && (!m.csmRating || !m.parentsRating)));
   if (!stale.length) {
     showStatus('All up to date', 'success');
     isRefreshing = false;
@@ -509,33 +557,39 @@ async function refreshAll(force) {
   showStatus('Checking ' + stale.length + ' movie' + (stale.length !== 1 ? 's' : '') + '...');
   try {
     for (const movie of stale) {
-      const tmdbId = await getTmdbId(movie.title, movie.year);
-      const [rapidServices, tmdbServices] = await Promise.all([
-        getStreamingAvailability(movie.title),
-        tmdbId ? getTmdbWatchProviders(tmdbId) : Promise.resolve([]),
-      ]);
-      const TYPE_PRIORITY = { subscription: 0, free: 1, rent: 2, buy: 3 };
-      const best = {};
-      for (const { id, type } of [...rapidServices, ...tmdbServices]) {
-        if (!best[id] || TYPE_PRIORITY[type] < TYPE_PRIORITY[best[id]]) best[id] = type;
+      try {
+        const tmdbId = await getTmdbId(movie.title, movie.year);
+        const [rapidServices, tmdbServices] = await Promise.all([
+          getStreamingAvailability(movie.title),
+          tmdbId ? getTmdbWatchProviders(tmdbId) : Promise.resolve([]),
+        ]);
+        const TYPE_PRIORITY = { subscription: 0, free: 1, rent: 2, buy: 3 };
+        const best = {};
+        for (const { id, type } of [...rapidServices, ...tmdbServices]) {
+          if (!best[id] || TYPE_PRIORITY[type] < TYPE_PRIORITY[best[id]]) best[id] = type;
+        }
+        const services = Object.entries(best).map(([id, type]) => ({ id, type }));
+        movie.streaming = services;
+        movie.lastChecked = today;
+        if (!movie.rating && tmdbId) {
+          movie.rating = await getMpaaRating(tmdbId);
+        }
+        if ((!movie.imdbId || !movie.imdbScore) && tmdbId) {
+          const imdbData = await getImdbData(tmdbId);
+          movie.imdbId = imdbData.imdbId || movie.imdbId;
+          movie.rtScore = imdbData.rtScore || movie.rtScore;
+          movie.imdbScore = imdbData.imdbScore || movie.imdbScore;
+          movie.mcScore = imdbData.mcScore || movie.mcScore;
+        }
+        if (activeList === 'kids' && !movie.csmRating) {
+          const csmData = await fetchCsmRatings(movie.title, movie.year);
+          movie.csmRating = csmData.csmRating;
+          movie.parentsRating = csmData.parentsRating || movie.parentsRating;
+        }
+        await sheetUpdate({ title: movie.title, streaming: JSON.stringify(services), lastChecked: today, rating: movie.rating || '', csmRating: movie.csmRating || '', parentsRating: movie.parentsRating || '', imdbId: movie.imdbId || '', rtScore: movie.rtScore || '', imdbScore: movie.imdbScore || '', mcScore: movie.mcScore || '' });
+      } catch(movieErr) {
+        console.warn('Refresh failed for: ' + movie.title, movieErr);
       }
-      const services = Object.entries(best).map(([id, type]) => ({ id, type }));
-      movie.streaming = services;
-      movie.lastChecked = today;
-      if (!movie.rating && tmdbId) {
-        movie.rating = await getMpaaRating(tmdbId);
-      }
-      if (!movie.imdbId && tmdbId) {
-        const imdbData = await getImdbData(tmdbId);
-        movie.imdbId = imdbData.imdbId;
-        movie.rtScore = imdbData.rtScore;
-        movie.imdbScore = imdbData.imdbScore;
-        movie.mcScore = imdbData.mcScore;
-      }
-      if (activeList === 'kids' && !movie.csmRating) {
-        movie.csmRating = await fetchCsmRating(movie.title, movie.year);
-      }
-      await sheetUpdate({ title: movie.title, streaming: JSON.stringify(services), lastChecked: today, rating: movie.rating || '', csmRating: movie.csmRating || '', imdbId: movie.imdbId || '', rtScore: movie.rtScore || '', imdbScore: movie.imdbScore || '', mcScore: movie.mcScore || '' });
     }
     renderWatchlist();
     showStatus('All updated', 'success');
@@ -564,9 +618,21 @@ function costLabel(type) {
 
 function renderWatchlist() {
   const el = document.getElementById('watchlist');
+  const countEl = document.getElementById('filterCount');
 
   if (!movies.length) {
+    if (countEl) countEl.textContent = '';
     el.innerHTML = '<div class="empty-state"><div class="empty-icon">🎬</div><div class="empty-text">Search for a movie above<br>to add it to your list</div></div>';
+    return;
+  }
+
+  const filtered = filteredMovies();
+  if (countEl) {
+    countEl.textContent = filterService !== 'all' ? 'Showing ' + filtered.length + ' of ' + movies.length : '';
+  }
+
+  if (movies.length && !filtered.length) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-text">No movies match this filter<br><a href="#" onclick="setFilter(\'all\');return false" style="color:var(--accent)">Clear filter</a></div></div>';
     return;
   }
 
