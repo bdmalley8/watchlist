@@ -120,7 +120,7 @@
   .movie-title a { color: inherit; text-decoration: none; transition: color 0.15s; }
   .movie-title a:hover { color: var(--accent); }
   /* TV season tracker */
-  .season-toggle { display: flex; align-items: center; gap: 6px; padding: 10px 0 0; margin-top: 10px; margin-bottom: 0; cursor: pointer; font-size: 13px; color: var(--muted); user-select: none; -webkit-tap-highlight-color: transparent; min-height: 44px; border-top: 1px solid var(--border); }
+  .season-toggle { display: flex; align-items: center; gap: 6px; padding: 8px 0 0; margin-top: 8px; margin-bottom: 0; cursor: pointer; font-size: 13px; color: var(--muted); user-select: none; -webkit-tap-highlight-color: transparent; min-height: 44px; border-top: 1px solid var(--border); }
   .season-toggle:hover { color: var(--text); }
   .season-toggle svg { transition: transform 0.2s; flex-shrink: 0; }
   .season-toggle.open svg { transform: rotate(90deg); }
@@ -1088,7 +1088,6 @@ function renderTvWatchlist() {
 
     let statusBadge = '';
     if (caughtUp) statusBadge = '<span class="show-status-badge status-caught-up">Caught up</span>';
-    else if (airedSeasons.length > watchedCount) statusBadge = '<span class="show-status-badge status-new-season">New season!</span>';
 
     let upcomingText = '';
     if (upcoming) {
