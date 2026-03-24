@@ -70,6 +70,9 @@
   .movie-title { font-weight: 600; font-size: 14px; line-height: 1.3; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .movie-year { font-size: 11px; color: var(--muted); margin-bottom: 8px; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
   .rating-badge { font-size: 9px; font-weight: 600; color: var(--muted); border: 1px solid rgba(255,255,255,0.15); border-radius: 3px; padding: 1px 4px; letter-spacing: 0.3px; flex-shrink: 0; }
+  .rating-badge.status-returning { color: rgba(76,175,80,0.9); border-color: rgba(76,175,80,0.3); }
+  .rating-badge.status-ended { color: rgba(255,255,255,0.4); border-color: rgba(255,255,255,0.1); }
+  .rating-badge.status-canceled { color: rgba(239,83,80,0.75); border-color: rgba(239,83,80,0.25); }
   .csm-badge { font-size: 9px; font-weight: 600; color: #4db880; border: 1px solid rgba(77,184,128,0.3); border-radius: 3px; padding: 1px 4px; letter-spacing: 0.3px; flex-shrink: 0; }
   .streaming-badges { display: flex; flex-wrap: wrap; gap: 4px; min-height: 20px; }
   .badge { font-size: 9px; font-weight: 500; letter-spacing: 0.3px; padding: 3px 6px; border-radius: 4px; text-transform: uppercase; display: flex; align-items: center; gap: 3px; }
@@ -1130,7 +1133,7 @@ function renderTvWatchlist() {
       '<div class="movie-info">' +
         '<div class="movie-title">' + titleHtml + '</div>' +
         '<div class="movie-year">' + (s.firstAirYear || '') +
-          (statusText ? '<span class="rating-badge">' + statusText + '</span>' : '') +
+          (statusText ? '<span class="rating-badge status-' + statusText.toLowerCase() + '">' + statusText + '</span>' : '') +
           ' ' + statusBadge +
           '<span class="watched-by-badge wb-' + (s.watchedBy || 'both') + '" onclick="cycleWatchedBy(' + titleJs + ')">' + ({both:'Both',bryan:'Bryan',denae:'Denae'}[s.watchedBy] || 'Both') + '</span>' +
         '</div>' +
