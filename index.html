@@ -85,7 +85,7 @@
   .badge-peacock { background: rgba(255,140,0,0.2); color: #e8a040; }
   .badge-none { background: rgba(255,255,255,0.05); color: var(--muted); }
   .badge-cost { font-size: 8px; opacity: 0.8; font-weight: 700; }
-  .remove-btn { position: absolute; top: 8px; right: 8px; width: 24px; height: 24px; background: rgba(0,0,0,0.6); border: none; border-radius: 50%; color: rgba(255,255,255,0.6); cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.15s; backdrop-filter: blur(4px); }
+  .remove-btn { position: absolute; top: 8px; right: 8px; width: 24px; height: 24px; background: rgba(0,0,0,0.6); border: none; border-radius: 50%; color: rgba(255,255,255,0.6); cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.15s; backdrop-filter: blur(4px); z-index: 3; }
   .movie-card:hover .remove-btn { opacity: 1; }
   .checking-badge { font-size: 10px; color: var(--muted); font-style: italic; }
   .status { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--surface); border: 1px solid var(--border); border-radius: 99px; padding: 10px 20px; font-size: 13px; color: var(--muted); white-space: nowrap; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 100; }
@@ -123,7 +123,7 @@
   .movie-title a { color: inherit; text-decoration: none; transition: color 0.15s; }
   .movie-title a:hover { color: var(--accent); }
   /* TV season tracker */
-  .season-toggle { display: flex; align-items: center; gap: 6px; padding: 8px 0 0; margin-top: 8px; margin-bottom: 0; cursor: pointer; font-size: 13px; color: var(--muted); user-select: none; -webkit-tap-highlight-color: transparent; min-height: 44px; border-top: 1px solid var(--border); }
+  .season-toggle { display: flex; align-items: center; gap: 6px; padding: 6px 0 0; margin-top: 6px; margin-bottom: 0; cursor: pointer; font-size: 13px; color: var(--muted); user-select: none; -webkit-tap-highlight-color: transparent; min-height: 44px; border-top: 1px solid var(--border); }
   .season-toggle:hover { color: var(--text); }
   .season-toggle svg { transition: transform 0.2s; flex-shrink: 0; }
   .season-toggle.open svg { transform: rotate(90deg); }
@@ -400,16 +400,16 @@ function switchMode(mode) {
   // Swap sort buttons
   const sortBar = document.getElementById('sortBar');
   if (mode === 'tv') {
-    sortBar.innerHTML = '<button class="sort-btn active" id="sort-added" onclick="setSort(\'added\')">Added</button>' +
+    sortBar.innerHTML = '<button class="sort-btn" id="sort-added" onclick="setSort(\'added\')">Added</button>' +
       '<button class="sort-btn" id="sort-az" onclick="setSort(\'az\')">A\u2013Z</button>' +
-      '<button class="sort-btn" id="sort-next" onclick="setSort(\'next\')">Next to watch</button>';
+      '<button class="sort-btn active" id="sort-next" onclick="setSort(\'next\')">Next to watch</button>';
   } else {
     sortBar.innerHTML = '<button class="sort-btn active" id="sort-added" onclick="setSort(\'added\')">Added</button>' +
       '<button class="sort-btn" id="sort-az" onclick="setSort(\'az\')">A\u2013Z</button>' +
       '<button class="sort-btn" id="sort-year" onclick="setSort(\'year\')">Year</button>' +
       '<button class="sort-btn" id="sort-rating" onclick="setSort(\'rating\')">Rating</button>';
   }
-  sortBy = 'added';
+  sortBy = mode === 'tv' ? 'next' : 'added';
   filterService = 'all';
   filterViewer = 'all';
   document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
@@ -884,6 +884,33 @@ function handleRefresh() {
   else refreshMovies(true);
 }
 
+async function refreshOneMovie(movie, today) {
+  try {
+    const tmdbId = await getTmdbId(movie.title, movie.year);
+    const [rapidServices, tmdbServices, rating, imdbData, csmData] = await Promise.all([
+      getStreamingAvailability(movie.title),
+      tmdbId ? getTmdbWatchProviders(tmdbId, 'movie') : Promise.resolve([]),
+      (!movie.rating && tmdbId) ? getMpaaRating(tmdbId) : Promise.resolve(''),
+      ((!movie.imdbId || !movie.imdbScore) && tmdbId) ? getImdbData(tmdbId) : Promise.resolve(null),
+      (activeList === 'kids' && !movie.csmRating) ? fetchCsmRatings(movie.title, movie.year) : Promise.resolve(null),
+    ]);
+    movie.streaming = mergeStreaming(rapidServices, tmdbServices);
+    movie.lastChecked = today;
+    if (rating) movie.rating = rating;
+    if (imdbData) {
+      movie.imdbId = imdbData.imdbId || movie.imdbId;
+      movie.rtScore = imdbData.rtScore || movie.rtScore;
+      movie.imdbScore = imdbData.imdbScore || movie.imdbScore;
+      movie.mcScore = imdbData.mcScore || movie.mcScore;
+    }
+    if (csmData) {
+      movie.csmRating = csmData.csmRating || movie.csmRating;
+      movie.parentsRating = csmData.parentsRating || movie.parentsRating;
+    }
+    await sheetUpdate({ title: movie.title, streaming: JSON.stringify(movie.streaming), lastChecked: today, rating: movie.rating || '', csmRating: movie.csmRating || '', parentsRating: movie.parentsRating || '', imdbId: movie.imdbId || '', rtScore: movie.rtScore || '', imdbScore: movie.imdbScore || '', mcScore: movie.mcScore || '' });
+  } catch(e) { console.warn('Refresh failed for: ' + movie.title, e); }
+}
+
 async function refreshMovies(force) {
   if (isRefreshing) return;
   isRefreshing = true;
@@ -898,38 +925,41 @@ async function refreshMovies(force) {
   }
   showStatus('Checking ' + stale.length + ' movie' + (stale.length !== 1 ? 's' : '') + '...');
   try {
-    for (const movie of stale) {
-      try {
-        const tmdbId = await getTmdbId(movie.title, movie.year);
-        const [rapidServices, tmdbServices] = await Promise.all([
-          getStreamingAvailability(movie.title),
-          tmdbId ? getTmdbWatchProviders(tmdbId, 'movie') : Promise.resolve([]),
-        ]);
-        const services = mergeStreaming(rapidServices, tmdbServices);
-        movie.streaming = services;
-        movie.lastChecked = today;
-        if (!movie.rating && tmdbId) movie.rating = await getMpaaRating(tmdbId);
-        if ((!movie.imdbId || !movie.imdbScore) && tmdbId) {
-          const imdbData = await getImdbData(tmdbId);
-          movie.imdbId = imdbData.imdbId || movie.imdbId;
-          movie.rtScore = imdbData.rtScore || movie.rtScore;
-          movie.imdbScore = imdbData.imdbScore || movie.imdbScore;
-          movie.mcScore = imdbData.mcScore || movie.mcScore;
-        }
-        if (activeList === 'kids' && !movie.csmRating) {
-          const csmData = await fetchCsmRatings(movie.title, movie.year);
-          movie.csmRating = csmData.csmRating;
-          movie.parentsRating = csmData.parentsRating || movie.parentsRating;
-        }
-        await sheetUpdate({ title: movie.title, streaming: JSON.stringify(services), lastChecked: today, rating: movie.rating || '', csmRating: movie.csmRating || '', parentsRating: movie.parentsRating || '', imdbId: movie.imdbId || '', rtScore: movie.rtScore || '', imdbScore: movie.imdbScore || '', mcScore: movie.mcScore || '' });
-      } catch(movieErr) { console.warn('Refresh failed for: ' + movie.title, movieErr); }
+    const BATCH = 5;
+    for (let i = 0; i < stale.length; i += BATCH) {
+      await Promise.all(stale.slice(i, i + BATCH).map(m => refreshOneMovie(m, today)));
+      render();
     }
-    render();
     showStatus('All updated', 'success');
   } finally {
     isRefreshing = false;
     document.getElementById('refreshBtn').classList.remove('spinning');
   }
+}
+
+async function refreshOneTvShow(show, today) {
+  try {
+    const tmdbId = show.tmdbId;
+    if (!tmdbId) return;
+    const imdbId = show.imdbId || await getTvExternalIds(tmdbId);
+    const [tvDetails, tmdbServices, scores] = await Promise.all([
+      getTvDetails(tmdbId),
+      getTmdbWatchProviders(tmdbId, 'tv'),
+      (!show.imdbScore && imdbId) ? getOmdbScores(imdbId) : Promise.resolve(null),
+    ]);
+    show.seasons = tvDetails.seasons;
+    show.totalSeasons = tvDetails.totalSeasons;
+    show.status = tvDetails.status;
+    show.streaming = tmdbServices;
+    show.lastChecked = today;
+    show.imdbId = imdbId;
+    if (scores) {
+      show.rtScore = scores.rtScore || show.rtScore;
+      show.imdbScore = scores.imdbScore || show.imdbScore;
+      show.mcScore = scores.mcScore || show.mcScore;
+    }
+    await sheetUpdate({ title: show.title, streaming: JSON.stringify(show.streaming), lastChecked: today, totalSeasons: show.totalSeasons, status: show.status, imdbId: show.imdbId || '', rtScore: show.rtScore || '', imdbScore: show.imdbScore || '', mcScore: show.mcScore || '' });
+  } catch(e) { console.warn('Refresh failed for: ' + show.title, e); }
 }
 
 async function refreshTvShows(force) {
@@ -946,30 +976,11 @@ async function refreshTvShows(force) {
   }
   showStatus('Checking ' + stale.length + ' show' + (stale.length !== 1 ? 's' : '') + '...');
   try {
-    for (const show of stale) {
-      try {
-        const tmdbId = show.tmdbId;
-        if (!tmdbId) continue;
-        const [tvDetails, tmdbServices] = await Promise.all([
-          getTvDetails(tmdbId),
-          getTmdbWatchProviders(tmdbId, 'tv'),
-        ]);
-        show.seasons = tvDetails.seasons;
-        show.totalSeasons = tvDetails.totalSeasons;
-        show.status = tvDetails.status;
-        show.streaming = tmdbServices;
-        show.lastChecked = today;
-        if (!show.imdbId) show.imdbId = await getTvExternalIds(tmdbId);
-        if ((!show.imdbScore) && show.imdbId) {
-          const scores = await getOmdbScores(show.imdbId);
-          show.rtScore = scores.rtScore || show.rtScore;
-          show.imdbScore = scores.imdbScore || show.imdbScore;
-          show.mcScore = scores.mcScore || show.mcScore;
-        }
-        await sheetUpdate({ title: show.title, streaming: JSON.stringify(show.streaming), lastChecked: today, totalSeasons: show.totalSeasons, status: show.status, imdbId: show.imdbId || '', rtScore: show.rtScore || '', imdbScore: show.imdbScore || '', mcScore: show.mcScore || '' });
-      } catch(err) { console.warn('Refresh failed for: ' + show.title, err); }
+    const BATCH = 5;
+    for (let i = 0; i < stale.length; i += BATCH) {
+      await Promise.all(stale.slice(i, i + BATCH).map(s => refreshOneTvShow(s, today)));
+      render();
     }
-    render();
     showStatus('All updated', 'success');
   } finally {
     isRefreshing = false;
