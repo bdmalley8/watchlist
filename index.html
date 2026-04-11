@@ -357,7 +357,7 @@ function showStatus(msg, type) {
   el.innerHTML = msg;
   el.className = 'status visible ' + (type || '');
   clearTimeout(statusTimer);
-  statusTimer = setTimeout(() => el.classList.remove('visible'), 3500);
+  if (type || !isRefreshing) statusTimer = setTimeout(() => el.classList.remove('visible'), 3500);
 }
 
 // ── Google Sheet API ──────────────────────────────────────────────────────────
@@ -923,14 +923,15 @@ async function refreshMovies(force) {
     document.getElementById('refreshBtn').classList.remove('spinning');
     return;
   }
-  showStatus('Checking ' + stale.length + ' movie' + (stale.length !== 1 ? 's' : '') + '...');
+  showStatus('Updating 0/' + stale.length + ' movies...');
   try {
+    let done = 0;
     const BATCH = 5;
     for (let i = 0; i < stale.length; i += BATCH) {
-      await Promise.all(stale.slice(i, i + BATCH).map(m => refreshOneMovie(m, today)));
-      render();
+      await Promise.all(stale.slice(i, i + BATCH).map(async m => { await refreshOneMovie(m, today); done++; showStatus('Updating ' + done + '/' + stale.length + ' movies...'); }));
     }
-    showStatus('All updated', 'success');
+    render();
+    showStatus('All ' + stale.length + ' movies updated', 'success');
   } finally {
     isRefreshing = false;
     document.getElementById('refreshBtn').classList.remove('spinning');
@@ -974,14 +975,15 @@ async function refreshTvShows(force) {
     document.getElementById('refreshBtn').classList.remove('spinning');
     return;
   }
-  showStatus('Checking ' + stale.length + ' show' + (stale.length !== 1 ? 's' : '') + '...');
+  showStatus('Updating 0/' + stale.length + ' shows...');
   try {
+    let done = 0;
     const BATCH = 5;
     for (let i = 0; i < stale.length; i += BATCH) {
-      await Promise.all(stale.slice(i, i + BATCH).map(s => refreshOneTvShow(s, today)));
-      render();
+      await Promise.all(stale.slice(i, i + BATCH).map(async s => { await refreshOneTvShow(s, today); done++; showStatus('Updating ' + done + '/' + stale.length + ' shows...'); }));
     }
-    showStatus('All updated', 'success');
+    render();
+    showStatus('All ' + stale.length + ' shows updated', 'success');
   } finally {
     isRefreshing = false;
     document.getElementById('refreshBtn').classList.remove('spinning');
