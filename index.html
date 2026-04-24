@@ -602,6 +602,16 @@ async function getTmdbId(title, year) {
 }
 
 // ── TV-specific APIs ─────────────────────────────────────────────────────────
+async function getSeasonAiredCount(tmdbId, seasonNum) {
+  try {
+    const res = await fetch('https://api.themoviedb.org/3/tv/' + tmdbId + '/season/' + seasonNum + '?api_key=' + TMDB_KEY);
+    const data = await res.json();
+    const today = new Date().toISOString().split('T')[0];
+    const episodes = data.episodes || [];
+    return episodes.filter(ep => ep.air_date && ep.air_date <= today).length;
+  } catch(e) { return 0; }
+}
+
 async function getTvDetails(tmdbId) {
   try {
     const res = await fetch('https://api.themoviedb.org/3/tv/' + tmdbId + '?api_key=' + TMDB_KEY);
@@ -613,9 +623,20 @@ async function getTvDetails(tmdbId) {
         number: s.season_number,
         name: s.name || 'Season ' + s.season_number,
         episodeCount: s.episode_count || 0,
+        airedEpisodes: s.episode_count || 0,
         airDate: s.air_date || null,
         aired: s.air_date && s.air_date <= today && s.episode_count > 0,
       }));
+    // For aired seasons of returning shows, check if episodes are still rolling out
+    if (data.status === 'Returning Series') {
+      const latest = seasons.filter(s => s.aired).pop();
+      if (latest) {
+        const airedCount = await getSeasonAiredCount(tmdbId, latest.number);
+        if (airedCount > 0 && airedCount < latest.episodeCount) {
+          latest.airedEpisodes = airedCount;
+        }
+      }
+    }
     return {
       seasons,
       status: data.status || '',
@@ -1131,7 +1152,8 @@ function renderTvWatchlist() {
       for (const ss of s.seasons) {
         if (ss.aired) {
           const checked = s.seasonsWatched.includes(ss.number) ? ' checked' : '';
-          seasonListHtml += '<label class="season-item"><input type="checkbox"' + checked + ' onchange="toggleSeason(' + titleJs + ',' + ss.number + ')"> S' + ss.number + ' · ' + ss.episodeCount + ' episodes</label>';
+          const epLabel = (ss.airedEpisodes && ss.airedEpisodes < ss.episodeCount) ? ss.airedEpisodes + '/' + ss.episodeCount + ' episodes' : ss.episodeCount + ' episodes';
+          seasonListHtml += '<label class="season-item"><input type="checkbox"' + checked + ' onchange="toggleSeason(' + titleJs + ',' + ss.number + ')"> S' + ss.number + ' · ' + epLabel + '</label>';
         } else if (ss.airDate || ss.episodeCount === 0) {
           seasonListHtml += '<div class="season-item upcoming">S' + ss.number + ' · Coming soon</div>';
         }
