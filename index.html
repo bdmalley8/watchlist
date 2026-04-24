@@ -223,6 +223,7 @@ const RAPID_KEY  = '6843182acdmsh3606361dc74ed24p1b3afejsnf8eccf80e039';
 const TMDB_KEY   = 'cd13f611fe266eabec6fd4bd6495b74e';
 const OMDB_KEY   = 'd10ed96a';
 const REFRESH_HOURS = 24;
+const DEV_MODE = new URLSearchParams(window.location.search).has('dev');
 
 const SERVICE_MAP = {
   netflix:  { label: 'Netflix',   cls: 'badge-netflix' },
@@ -456,7 +457,7 @@ async function loadList() {
       imdbId: r.imdbId || '', rtScore: r.rtScore || '', imdbScore: r.imdbScore || '', mcScore: r.mcScore || '',
     }));
     render();
-    refreshMovies(false);
+    if (!DEV_MODE) refreshMovies(false);
   } catch(e) {
     document.getElementById('watchlist').innerHTML =
       '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Could not load list.<br>Check your Apps Script deployment.</div></div>';
@@ -492,7 +493,7 @@ async function loadTvList() {
       }));
       render();
     }
-    refreshTvShows(false);
+    if (!DEV_MODE) refreshTvShows(false);
   } catch(e) {
     document.getElementById('watchlist').innerHTML =
       '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Could not load TV list.<br>Check your Apps Script deployment.</div></div>';
