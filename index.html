@@ -90,6 +90,12 @@
   .checking-badge { font-size: 10px; color: var(--muted); font-style: italic; }
   .status { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--surface); border: 1px solid var(--border); border-radius: 99px; padding: 10px 20px; font-size: 13px; color: var(--muted); white-space: nowrap; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 100; }
   .status.visible { opacity: 1; }
+  .status.has-undo { pointer-events: auto; cursor: default; }
+  .status .undo-btn { background: none; border: none; color: var(--accent); font-weight: 600; cursor: pointer; margin-left: 8px; font-size: 13px; padding: 0; }
+  .movie-card.removing { animation: cardRemove 0.35s ease forwards; }
+  @keyframes cardRemove { 0% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(0.85); } }
+  .caught-up-flash { position: absolute; inset: 0; background: rgba(76,175,80,0.2); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; color: rgba(76,175,80,0.9); border-radius: 12px; opacity: 0; pointer-events: none; z-index: 5; animation: flashIn 1.5s ease forwards; }
+  @keyframes flashIn { 0% { opacity: 0; } 15% { opacity: 1; } 70% { opacity: 1; } 100% { opacity: 0; } }
   .status.success { color: var(--accent); border-color: rgba(232,197,71,0.3); }
   .status.error { color: var(--red); border-color: rgba(232,71,71,0.3); }
   .empty-state { grid-column: 1 / -1; text-align: center; padding: 48px 24px; color: var(--muted); }
@@ -855,18 +861,63 @@ async function addTvShow(title, firstAirYear, posterPath, tmdbId, watchedBy) {
 }
 
 // ── Remove ───────────────────────────────────────────────────────────────────
+let undoTimer = null;
+let undoData = null;
+
 async function removeItem(title) {
+  // Find the card element and animate it out
+  const cards = document.querySelectorAll('.movie-card');
+  let cardEl = null;
+  cards.forEach(c => { if (c.querySelector('.movie-title a')?.textContent === title || c.querySelector('.movie-title')?.textContent === title) cardEl = c; });
+
+  // Store item for undo
+  let removed, removedIdx;
   if (activeMode === 'tv') {
-    const i = tvShows.findIndex(s => s.title === title);
-    if (i === -1) return;
-    tvShows.splice(i, 1);
+    removedIdx = tvShows.findIndex(s => s.title === title);
+    if (removedIdx === -1) return;
+    removed = tvShows[removedIdx];
+    tvShows.splice(removedIdx, 1);
   } else {
-    const i = movies.findIndex(m => m.title === title);
-    if (i === -1) return;
-    movies.splice(i, 1);
+    removedIdx = movies.findIndex(m => m.title === title);
+    if (removedIdx === -1) return;
+    removed = movies[removedIdx];
+    movies.splice(removedIdx, 1);
+  }
+
+  // Animate card out, then render
+  if (cardEl) {
+    cardEl.classList.add('removing');
+    await new Promise(r => setTimeout(r, 350));
   }
   render();
-  await sheetRemove({ title });
+
+  // Show undo toast
+  clearTimeout(undoTimer);
+  undoData = { item: removed, idx: removedIdx, mode: activeMode, list: activeList };
+  const el = document.getElementById('status');
+  el.innerHTML = 'Removed ' + title + ' <button class="undo-btn" onclick="undoRemove()">Undo</button>';
+  el.className = 'status visible has-undo';
+  clearTimeout(statusTimer);
+  undoTimer = setTimeout(() => {
+    // Actually delete from sheet after undo window expires
+    sheetRemove({ title });
+    undoData = null;
+    el.classList.remove('visible', 'has-undo');
+  }, 5000);
+}
+
+function undoRemove() {
+  if (!undoData) return;
+  clearTimeout(undoTimer);
+  const { item, idx, mode, list } = undoData;
+  if (mode === 'tv') {
+    tvShows.splice(idx, 0, item);
+  } else {
+    movies.splice(idx, 0, item);
+  }
+  undoData = null;
+  render();
+  showStatus(item.title + ' restored', 'success');
 }
 
 // ── Cycle watched-by ─────────────────────────────────────────────────────────
@@ -884,10 +935,26 @@ async function cycleWatchedBy(title) {
 async function toggleSeason(title, seasonNum) {
   const show = tvShows.find(s => s.title === title);
   if (!show) return;
+  const wasCaughtUp = isCaughtUp(show);
   const idx = show.seasonsWatched.indexOf(seasonNum);
   if (idx >= 0) { show.seasonsWatched.splice(idx, 1); }
   else { show.seasonsWatched.push(seasonNum); show.seasonsWatched.sort((a, b) => a - b); }
+  const nowCaughtUp = isCaughtUp(show);
   render();
+  // Flash "All caught up!" when transitioning to caught-up state
+  if (!wasCaughtUp && nowCaughtUp) {
+    const cards = document.querySelectorAll('.movie-card');
+    cards.forEach(c => {
+      const titleEl = c.querySelector('.movie-title a') || c.querySelector('.movie-title');
+      if (titleEl && titleEl.textContent === title) {
+        const flash = document.createElement('div');
+        flash.className = 'caught-up-flash';
+        flash.textContent = 'All caught up!';
+        c.appendChild(flash);
+        setTimeout(() => flash.remove(), 1600);
+      }
+    });
+  }
   await sheetUpdate({ title, seasonsWatched: show.seasonsWatched.join(',') });
 }
 
