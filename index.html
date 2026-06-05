@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#0a0a0f">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -88,7 +88,7 @@
   .remove-btn { position: absolute; top: 8px; right: 8px; width: 24px; height: 24px; background: rgba(0,0,0,0.6); border: none; border-radius: 50%; color: rgba(255,255,255,0.6); cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.15s; backdrop-filter: blur(4px); z-index: 3; }
   .movie-card:hover .remove-btn { opacity: 1; }
   .checking-badge { font-size: 10px; color: var(--muted); font-style: italic; }
-  .status { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--surface); border: 1px solid var(--border); border-radius: 99px; padding: 10px 20px; font-size: 13px; color: var(--muted); white-space: nowrap; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 100; }
+  .status { position: fixed; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); background: var(--surface); border: 1px solid var(--border); border-radius: 99px; padding: 10px 20px; font-size: 13px; color: var(--muted); white-space: nowrap; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 100; }
   .status.visible { opacity: 1; }
   .status.has-undo { pointer-events: auto; cursor: default; }
   .status .undo-btn { background: none; border: none; color: var(--accent); font-weight: 600; cursor: pointer; margin-left: 8px; font-size: 13px; padding: 0; }
