@@ -940,20 +940,31 @@ async function toggleSeason(title, seasonNum) {
   if (idx >= 0) { show.seasonsWatched.splice(idx, 1); }
   else { show.seasonsWatched.push(seasonNum); show.seasonsWatched.sort((a, b) => a - b); }
   const nowCaughtUp = isCaughtUp(show);
-  render();
-  // Flash "All caught up!" when transitioning to caught-up state
+
   if (!wasCaughtUp && nowCaughtUp) {
+    // Update checkbox without full re-render so card stays in place
     const cards = document.querySelectorAll('.movie-card');
     cards.forEach(c => {
       const titleEl = c.querySelector('.movie-title a') || c.querySelector('.movie-title');
       if (titleEl && titleEl.textContent === title) {
+        // Update the season progress text
+        const progress = c.querySelector('.season-progress');
+        const airedSeasons = show.seasons.filter(s => s.aired);
+        if (progress) progress.textContent = airedSeasons.length + '/' + airedSeasons.length + ' seasons';
+        // Check the checkbox
+        const checkboxes = c.querySelectorAll('.season-item input');
+        checkboxes.forEach(cb => { cb.checked = true; });
+        // Show flash overlay
         const flash = document.createElement('div');
         flash.className = 'caught-up-flash';
         flash.textContent = 'All caught up!';
         c.appendChild(flash);
-        setTimeout(() => flash.remove(), 1600);
+        // After flash, re-render to move card to caught-up group
+        setTimeout(() => { flash.remove(); render(); }, 1800);
       }
     });
+  } else {
+    render();
   }
   await sheetUpdate({ title, seasonsWatched: show.seasonsWatched.join(',') });
 }
