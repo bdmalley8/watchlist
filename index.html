@@ -151,8 +151,12 @@
   .status-new-season { background: rgba(232,197,71,0.2); color: var(--accent); }
   .upcoming-text { font-size: 10px; color: var(--accent2); font-style: italic; margin-top: 2px; }
   /* Watched-by badge */
-  .watched-by-badge { font-size: 9px; font-weight: 600; padding: 1px 5px; border-radius: 3px; cursor: pointer; letter-spacing: 0.3px; flex-shrink: 0; user-select: none; -webkit-tap-highlight-color: transparent; transition: all 0.15s; }
+  .watched-by-badge { font-size: 9px; font-weight: 600; padding: 1px 5px; border-radius: 3px; cursor: pointer; letter-spacing: 0.3px; flex-shrink: 0; user-select: none; -webkit-tap-highlight-color: transparent; transition: all 0.15s; position: relative; }
   .watched-by-badge:hover { opacity: 0.8; }
+  .wb-picker { position: absolute; top: 100%; left: 0; margin-top: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 4px; display: flex; flex-direction: column; gap: 2px; z-index: 20; box-shadow: 0 4px 12px rgba(0,0,0,0.3); white-space: nowrap; }
+  .wb-picker-btn { background: none; border: none; color: var(--text); font-size: 12px; padding: 8px 16px; border-radius: 6px; cursor: pointer; text-align: left; font-weight: 500; }
+  .wb-picker-btn:hover { background: rgba(255,255,255,0.08); }
+  .wb-picker-btn.active { color: var(--accent); font-weight: 600; }
   .wb-both { background: rgba(232,197,71,0.2); color: var(--accent); border: 1px solid rgba(232,197,71,0.3); }
   .wb-bryan { background: rgba(91,141,239,0.2); color: #5b8def; border: 1px solid rgba(91,141,239,0.3); }
   .wb-denae { background: rgba(200,100,200,0.2); color: #c888c8; border: 1px solid rgba(200,100,200,0.3); }
@@ -920,15 +924,38 @@ function undoRemove() {
   showStatus(item.title + ' restored', 'success');
 }
 
-// ── Cycle watched-by ─────────────────────────────────────────────────────────
-async function cycleWatchedBy(title) {
+// ── Watched-by picker ────────────────────────────────────────────────────────
+function showWatchedByPicker(title, event) {
+  event.stopPropagation();
+  // Remove any existing picker
+  const existing = document.querySelector('.wb-picker');
+  if (existing) { existing.remove(); return; }
   const show = tvShows.find(s => s.title === title);
   if (!show) return;
-  const order = ['both', 'bryan', 'denae'];
-  const idx = order.indexOf(show.watchedBy);
-  show.watchedBy = order[(idx + 1) % order.length];
-  render();
-  await sheetUpdate({ title, watchedBy: show.watchedBy });
+  const badge = event.currentTarget;
+  const options = ['both', 'bryan', 'denae'];
+  const labels = { both: 'Both', bryan: 'Bryan', denae: 'Denae' };
+  const picker = document.createElement('div');
+  picker.className = 'wb-picker';
+  options.forEach(opt => {
+    const btn = document.createElement('button');
+    btn.className = 'wb-picker-btn' + (show.watchedBy === opt ? ' active' : '');
+    btn.textContent = labels[opt];
+    btn.onclick = async (e) => {
+      e.stopPropagation();
+      show.watchedBy = opt;
+      picker.remove();
+      render();
+      await sheetUpdate({ title, watchedBy: opt });
+    };
+    picker.appendChild(btn);
+  });
+  badge.appendChild(picker);
+  // Close picker on outside click
+  setTimeout(() => {
+    const close = (e) => { if (!picker.contains(e.target)) { picker.remove(); document.removeEventListener('click', close); } };
+    document.addEventListener('click', close);
+  }, 0);
 }
 
 // ── Toggle season watched ────────────────────────────────────────────────────
@@ -1249,7 +1276,7 @@ function renderTvWatchlist() {
         '<div class="movie-year">' + (s.firstAirYear || '') +
           (statusText ? '<span class="rating-badge status-' + statusText.toLowerCase() + '">' + statusText + '</span>' : '') +
           ' ' + statusBadge +
-          '<span class="watched-by-badge wb-' + (s.watchedBy || 'both') + '" onclick="cycleWatchedBy(' + titleJs + ')">' + ({both:'Both',bryan:'Bryan',denae:'Denae'}[s.watchedBy] || 'Both') + '</span>' +
+          '<span class="watched-by-badge wb-' + (s.watchedBy || 'both') + '" onclick="showWatchedByPicker(' + titleJs + ', event)">' + ({both:'Both',bryan:'Bryan',denae:'Denae'}[s.watchedBy] || 'Both') + '</span>' +
         '</div>' +
         '<div class="streaming-badges">' + renderStreamingBadges(s.streaming) + '</div>' +
         seasonToggle + upcomingText + seasonListHtml +
