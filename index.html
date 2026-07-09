@@ -493,14 +493,17 @@ async function loadTvList() {
     // Fetch season details from TMDB for all shows (not stored in sheet)
     const showsWithTmdb = tvShows.filter(s => s.tmdbId);
     if (showsWithTmdb.length) {
-      await Promise.all(showsWithTmdb.map(async s => {
-        try {
-          const details = await getTvDetails(s.tmdbId);
-          s.seasons = details.seasons;
-          s.totalSeasons = details.totalSeasons;
-          s.status = details.status;
-        } catch(e) {}
-      }));
+      const BATCH = 5;
+      for (let i = 0; i < showsWithTmdb.length; i += BATCH) {
+        await Promise.all(showsWithTmdb.slice(i, i + BATCH).map(async s => {
+          try {
+            const details = await getTvDetails(s.tmdbId);
+            s.seasons = details.seasons;
+            s.totalSeasons = details.totalSeasons;
+            s.status = details.status;
+          } catch(e) { console.warn('Season fetch failed for: ' + s.title, e); }
+        }));
+      }
       render();
     }
     if (!DEV_MODE) refreshTvShows(false);
