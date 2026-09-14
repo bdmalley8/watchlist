@@ -142,8 +142,8 @@
   .season-item.upcoming { color: var(--muted); font-style: italic; }
   .season-progress { font-size: 10px; color: var(--muted); }
   /* Caught-up state */
-  .movie-card.caught-up .movie-poster { opacity: 0.4; filter: saturate(0.3); transition: opacity 0.3s, filter 0.3s; }
-  .movie-card.caught-up:hover .movie-poster { opacity: 0.7; filter: saturate(0.5); }
+  .movie-card.caught-up .movie-poster, .movie-card.not-streaming .movie-poster { opacity: 0.4; filter: saturate(0.3); transition: opacity 0.3s, filter 0.3s; }
+  .movie-card.caught-up:hover .movie-poster, .movie-card.not-streaming:hover .movie-poster { opacity: 0.7; filter: saturate(0.5); }
   .movie-card.caught-up .remove-btn { z-index: 10; }
   .movie-card.caught-up .score-overlay { z-index: 5; }
   .show-status-badge { font-size: 8px; font-weight: 600; padding: 2px 6px; border-radius: 3px; letter-spacing: 0.3px; display: inline-block; }
@@ -328,16 +328,23 @@ function filterList(list) {
   return result;
 }
 
+function isNotStreaming(movie) {
+  return movie.streaming !== null && (!movie.streaming || !movie.streaming.length);
+}
+
 function sortedMovies() {
   const list = [...filterList(movies)];
-  if (sortBy === 'az') return list.sort((a, b) => a.title.localeCompare(b.title));
-  if (sortBy === 'year') return list.sort((a, b) => (parseInt(b.year) || 0) - (parseInt(a.year) || 0));
-  if (sortBy === 'rating') return list.sort((a, b) => {
-    const ra = RATING_ORDER[a.rating] ?? 99;
-    const rb = RATING_ORDER[b.rating] ?? 99;
-    return ra - rb;
+  const withAvailability = (arr) => arr.sort((a, b) => {
+    const aUnavail = isNotStreaming(a) ? 1 : 0;
+    const bUnavail = isNotStreaming(b) ? 1 : 0;
+    if (aUnavail !== bUnavail) return aUnavail - bUnavail;
+    return 0;
   });
-  return list.reverse();
+  if (sortBy === 'az') { list.sort((a, b) => a.title.localeCompare(b.title)); return withAvailability(list); }
+  if (sortBy === 'year') { list.sort((a, b) => (parseInt(b.year) || 0) - (parseInt(a.year) || 0)); return withAvailability(list); }
+  if (sortBy === 'rating') { list.sort((a, b) => { const ra = RATING_ORDER[a.rating] ?? 99; const rb = RATING_ORDER[b.rating] ?? 99; return ra - rb; }); return withAvailability(list); }
+  list.reverse();
+  return withAvailability(list);
 }
 
 function sortedTvShows() {
@@ -1187,7 +1194,8 @@ function renderMovieWatchlist() {
     const titleHtml = m.imdbId
       ? '<a href="https://www.imdb.com/title/' + m.imdbId + '" target="_blank" rel="noopener">' + m.title + '</a>'
       : m.title;
-    return '<div class="movie-card">' +
+    const notStreaming = isNotStreaming(m);
+    return '<div class="movie-card' + (notStreaming ? ' not-streaming' : '') + '">' +
       '<button class="remove-btn" onclick="removeItem(' + JSON.stringify(m.title).replace(/"/g, '&quot;') + ')">×</button>' +
       renderScoreOverlay(m) + poster +
       '<div class="movie-info">' +
