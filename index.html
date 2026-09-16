@@ -268,6 +268,12 @@ function parseStreaming(val) {
   return val;
 }
 
+function parseSeasons(val) {
+  if (!val) return [];
+  try { const arr = JSON.parse(val); return Array.isArray(arr) ? arr : []; }
+  catch(e) { return []; }
+}
+
 function parseSeasonsWatched(val) {
   if (!val) return [];
   const str = String(val);
@@ -491,28 +497,12 @@ async function loadTvList() {
       tmdbId: r.tmdbId || '', imdbId: r.imdbId || '',
       totalSeasons: parseInt(r.totalSeasons) || 0,
       seasonsWatched: parseSeasonsWatched(r.seasonsWatched),
-      seasons: [], // populated on refresh
+      seasons: parseSeasons(r.seasons),
       status: r.status || '',
       watchedBy: r.watchedBy || 'both',
       rtScore: r.rtScore || '', imdbScore: r.imdbScore || '', mcScore: r.mcScore || '',
     }));
     render();
-    // Fetch season details from TMDB for all shows (not stored in sheet)
-    const showsWithTmdb = tvShows.filter(s => s.tmdbId);
-    if (showsWithTmdb.length) {
-      const BATCH = 5;
-      for (let i = 0; i < showsWithTmdb.length; i += BATCH) {
-        await Promise.all(showsWithTmdb.slice(i, i + BATCH).map(async s => {
-          try {
-            const details = await getTvDetails(s.tmdbId);
-            s.seasons = details.seasons;
-            s.totalSeasons = details.totalSeasons;
-            s.status = details.status;
-          } catch(e) { console.warn('Season fetch failed for: ' + s.title, e); }
-        }));
-      }
-      render();
-    }
     if (!DEV_MODE) refreshTvShows(false);
   } catch(e) {
     document.getElementById('watchlist').innerHTML =
@@ -867,6 +857,7 @@ async function addTvShow(title, firstAirYear, posterPath, tmdbId, watchedBy) {
       title, firstAirYear, posterUrl, streaming: JSON.stringify(show.streaming),
       lastChecked: show.lastChecked, tmdbId: String(tmdbId), imdbId: show.imdbId,
       totalSeasons: show.totalSeasons, seasonsWatched: show.seasonsWatched.join(','),
+      seasons: JSON.stringify(show.seasons),
       status: show.status, watchedBy, rtScore: show.rtScore, imdbScore: show.imdbScore, mcScore: show.mcScore
     });
     showStatus(title + ' added', 'success');
@@ -1096,7 +1087,7 @@ async function refreshOneTvShow(show, today) {
       show.imdbScore = scores.imdbScore || show.imdbScore;
       show.mcScore = scores.mcScore || show.mcScore;
     }
-    await sheetUpdate({ title: show.title, streaming: JSON.stringify(show.streaming), lastChecked: today, totalSeasons: show.totalSeasons, status: show.status, imdbId: show.imdbId || '', rtScore: show.rtScore || '', imdbScore: show.imdbScore || '', mcScore: show.mcScore || '' });
+    await sheetUpdate({ title: show.title, streaming: JSON.stringify(show.streaming), lastChecked: today, totalSeasons: show.totalSeasons, seasons: JSON.stringify(show.seasons), status: show.status, imdbId: show.imdbId || '', rtScore: show.rtScore || '', imdbScore: show.imdbScore || '', mcScore: show.mcScore || '' });
   } catch(e) { console.warn('Refresh failed for: ' + show.title, e); }
 }
 
