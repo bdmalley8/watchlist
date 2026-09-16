@@ -30,6 +30,13 @@
   .app { max-width: 480px; margin: 0 auto; padding: 0 0 80px; min-height: 100vh; }
   header { padding: calc(20px + env(safe-area-inset-top, 32px)) 24px 20px; display: flex; align-items: flex-start; justify-content: space-between; }
   .header-left {}
+  .header-right { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+  .auto-toggle { display: flex; align-items: center; gap: 5px; cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; }
+  .auto-toggle input { appearance: none; -webkit-appearance: none; width: 28px; height: 16px; background: rgba(255,255,255,0.1); border-radius: 99px; position: relative; cursor: pointer; transition: background 0.2s; }
+  .auto-toggle input::after { content: ''; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; background: var(--muted); border-radius: 50%; transition: all 0.2s; }
+  .auto-toggle input:checked { background: rgba(232,197,71,0.3); }
+  .auto-toggle input:checked::after { left: 14px; background: var(--accent); }
+  .auto-label { font-size: 10px; color: var(--muted); letter-spacing: 0.3px; }
   .logo { font-family: 'Bebas Neue', sans-serif; font-size: 42px; letter-spacing: 3px; color: var(--text); line-height: 1; }
   .logo span { color: var(--accent); }
   .refresh-btn { background: none; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); padding: 8px 12px; cursor: pointer; font-size: 13px; font-family: 'DM Sans', sans-serif; transition: border-color 0.2s, color 0.2s; margin-top: 8px; display: flex; align-items: center; gap: 6px; }
@@ -178,10 +185,13 @@
     <div class="header-left">
       <div class="logo">Malley <span>Watchlist</span></div>
     </div>
-    <button class="refresh-btn" id="refreshBtn" onclick="handleRefresh()">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
-      Refresh
-    </button>
+    <div class="header-right">
+      <button class="refresh-btn" id="refreshBtn" onclick="handleRefresh()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+        Refresh
+      </button>
+      <label class="auto-toggle" title="Auto-refresh on load"><input type="checkbox" id="autoRefreshToggle" onchange="toggleAutoRefresh()"><span class="auto-label">Auto</span></label>
+    </div>
   </header>
   <div class="mode-tabs">
     <button class="mode-tab active" id="mode-movies" onclick="switchMode('movies')">Movies</button>
@@ -234,6 +244,13 @@ const TMDB_KEY   = 'cd13f611fe266eabec6fd4bd6495b74e';
 const OMDB_KEY   = 'd10ed96a';
 const REFRESH_HOURS = 24;
 const DEV_MODE = new URLSearchParams(window.location.search).has('dev');
+let autoRefresh = true;
+try { autoRefresh = localStorage.getItem('autoRefresh') !== 'off'; } catch(e) {}
+
+function toggleAutoRefresh() {
+  autoRefresh = document.getElementById('autoRefreshToggle').checked;
+  try { localStorage.setItem('autoRefresh', autoRefresh ? 'on' : 'off'); } catch(e) {}
+}
 
 const SERVICE_MAP = {
   netflix:  { label: 'Netflix',   cls: 'badge-netflix' },
@@ -480,7 +497,7 @@ async function loadList() {
       imdbId: r.imdbId || '', rtScore: r.rtScore || '', imdbScore: r.imdbScore || '', mcScore: r.mcScore || '',
     }));
     render();
-    if (!DEV_MODE) refreshMovies(false);
+    if (!DEV_MODE && autoRefresh) refreshMovies(false);
   } catch(e) {
     document.getElementById('watchlist').innerHTML =
       '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Could not load list.<br>Check your Apps Script deployment.</div></div>';
@@ -503,7 +520,7 @@ async function loadTvList() {
       rtScore: r.rtScore || '', imdbScore: r.imdbScore || '', mcScore: r.mcScore || '',
     }));
     render();
-    if (!DEV_MODE) refreshTvShows(false);
+    if (!DEV_MODE && autoRefresh) refreshTvShows(false);
   } catch(e) {
     document.getElementById('watchlist').innerHTML =
       '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Could not load TV list.<br>Check your Apps Script deployment.</div></div>';
@@ -1299,6 +1316,7 @@ document.addEventListener('click', e => {
   if (!e.target.closest('.search-wrap') && !e.target.closest('.results')) hideResults();
 });
 
+document.getElementById('autoRefreshToggle').checked = autoRefresh;
 loadList();
 </script>
 </body>
