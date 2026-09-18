@@ -90,6 +90,7 @@
   .badge-prime { background: rgba(0,168,225,0.2); color: #4db8e0; }
   .badge-peacock { background: rgba(255,140,0,0.2); color: #e8a040; }
   .badge-none { background: rgba(255,255,255,0.05); color: var(--muted); }
+  .badge-upcoming { background: rgba(232,197,71,0.1); color: var(--accent2); }
   .badge-cost { font-size: 8px; opacity: 0.8; font-weight: 700; }
   .remove-btn { position: absolute; top: 8px; right: 8px; width: 24px; height: 24px; background: rgba(0,0,0,0.6); border: none; border-radius: 50%; color: rgba(255,255,255,0.6); cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.15s; backdrop-filter: blur(4px); z-index: 3; }
   .movie-card:hover .remove-btn { opacity: 1; }
@@ -249,6 +250,49 @@ function toggleAutoRefresh() {
   try { localStorage.setItem('autoRefresh', autoRefresh ? 'on' : 'off'); } catch(e) {}
 }
 
+// viewGen changes whenever the visible list changes, so in-flight loads/refreshes
+// for a previous list can detect they're stale and stop touching the UI.
+// mutationGen changes on every local edit, so a background fetch that started
+// before the edit won't overwrite it with older sheet data.
+let viewGen = 0;
+let mutationGen = 0;
+
+// ── Local cache (instant render, sheet fetch happens in background) ──────────
+function readCache(list) {
+  try {
+    const raw = localStorage.getItem('wl_cache_' + list);
+    if (!raw) return null;
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return null;
+    arr.forEach(m => { if (m.streaming === null) m.streaming = []; });
+    return arr;
+  } catch(e) { return null; }
+}
+function writeCache(list, items) {
+  try { localStorage.setItem('wl_cache_' + list, JSON.stringify(items)); } catch(e) {}
+}
+function saveCache() {
+  mutationGen++;
+  writeCache(getListParam(), activeMode === 'tv' ? tvShows : movies);
+}
+
+function esc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function fmtDate(iso) {
+  const d = new Date(iso + 'T00:00:00');
+  const yr = d.getFullYear() !== new Date().getFullYear() ? ' ' + d.getFullYear() : '';
+  return MONTHS[d.getMonth()] + ' ' + d.getDate() + yr;
+}
+function fmtRuntime(min) {
+  min = parseInt(min) || 0;
+  if (!min) return '';
+  const h = Math.floor(min / 60), m = min % 60;
+  return h ? h + 'h' + (m ? ' ' + m + 'm' : '') : m + 'm';
+}
+
 const SERVICE_MAP = {
   netflix:  { label: 'Netflix',   cls: 'badge-netflix' },
   hbo:      { label: 'Max',       cls: 'badge-hbo' },
@@ -403,25 +447,41 @@ function getListParam() {
   return activeMode === 'tv' ? 'tv' : activeList;
 }
 
-async function sheetGet() {
-  const res = await fetch(SCRIPT_URL + '?action=get&list=' + getListParam(), { redirect: 'follow' });
+async function sheetGet(list = getListParam()) {
+  const res = await fetch(SCRIPT_URL + '?action=get&list=' + list, { redirect: 'follow' });
   return res.json();
 }
 
-async function sheetAdd(data) {
-  await fetch(SCRIPT_URL + '?action=add&list=' + getListParam(), {
+// Returns {family, kids, tv} in one round-trip, or null if the deployed
+// Apps Script predates the 'all' action (an old deploy answers with a plain
+// array for the default list). Remembered per page so we don't pay for the
+// failed probe on every list switch.
+let allSupported = true;
+async function sheetGetAll() {
+  if (!allSupported) return null;
+  try {
+    const res = await fetch(SCRIPT_URL + '?action=all', { redirect: 'follow' });
+    const data = await res.json();
+    if (data && !Array.isArray(data) && Array.isArray(data.family)) return data;
+  } catch(e) {}
+  allSupported = false;
+  return null;
+}
+
+async function sheetAdd(data, list = getListParam()) {
+  await fetch(SCRIPT_URL + '?action=add&list=' + list, {
     method: 'POST', mode: 'no-cors', body: JSON.stringify(data)
   });
 }
 
-async function sheetUpdate(data) {
-  await fetch(SCRIPT_URL + '?action=update&list=' + getListParam(), {
+async function sheetUpdate(data, list = getListParam()) {
+  await fetch(SCRIPT_URL + '?action=update&list=' + list, {
     method: 'POST', mode: 'no-cors', body: JSON.stringify(data)
   });
 }
 
-async function sheetRemove(data) {
-  await fetch(SCRIPT_URL + '?action=remove&list=' + getListParam(), {
+async function sheetRemove(data, list = getListParam()) {
+  await fetch(SCRIPT_URL + '?action=remove&list=' + list, {
     method: 'POST', mode: 'no-cors', body: JSON.stringify(data)
   });
 }
@@ -459,8 +519,11 @@ function switchMode(mode) {
   document.getElementById('watchlist').innerHTML = '<div class="loading-state">Loading...</div>';
   hideResults();
   document.getElementById('searchInput').value = '';
+  flushPendingRemove();
+  viewGen++;
   isRefreshing = false;
-  if (mode === 'tv') { loadTvList(); } else { loadList(); }
+  document.getElementById('refreshBtn').classList.remove('spinning');
+  loadView();
 }
 
 // ── Switch movie list ────────────────────────────────────────────────────────
@@ -480,48 +543,91 @@ async function switchList(list) {
   document.getElementById('watchlist').innerHTML = '<div class="loading-state">Loading your list...</div>';
   hideResults();
   document.getElementById('searchInput').value = '';
+  flushPendingRemove();
+  viewGen++;
   isRefreshing = false;
-  await loadList();
+  document.getElementById('refreshBtn').classList.remove('spinning');
+  await loadView();
 }
 
-// ── Load movie list ──────────────────────────────────────────────────────────
-async function loadList() {
-  try {
-    const rows = await sheetGet();
-    movies = rows.map(r => ({
-      title: r.title || '', year: r.year || '', posterUrl: r.posterUrl || '',
-      streaming: parseStreaming(r.streaming), lastChecked: r.lastChecked || null,
-      rating: r.rating || '', csmRating: r.csmRating || '', parentsRating: r.parentsRating || '',
-      imdbId: r.imdbId || '', rtScore: r.rtScore || '', imdbScore: r.imdbScore || '', mcScore: r.mcScore || '',
-    }));
-    render();
-    if (!DEV_MODE && autoRefresh) refreshMovies(false);
-  } catch(e) {
-    document.getElementById('watchlist').innerHTML =
-      '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Could not load list.<br>Check your Apps Script deployment.</div></div>';
-  }
+// ── Load list (cache-first) ──────────────────────────────────────────────────
+function mapMovieRow(r) {
+  return {
+    title: r.title || '', year: r.year || '', posterUrl: r.posterUrl || '',
+    streaming: parseStreaming(r.streaming), lastChecked: r.lastChecked || null,
+    rating: r.rating || '', csmRating: r.csmRating || '', parentsRating: r.parentsRating || '',
+    imdbId: r.imdbId || '', rtScore: r.rtScore || '', imdbScore: r.imdbScore || '', mcScore: r.mcScore || '',
+    releaseDate: r.releaseDate ? String(r.releaseDate).slice(0, 10) : '',
+    digitalDate: r.digitalDate ? String(r.digitalDate).slice(0, 10) : '',
+    runtime: parseInt(r.runtime) || 0,
+  };
 }
 
-// ── Load TV list ─────────────────────────────────────────────────────────────
-async function loadTvList() {
+function mapTvRow(r) {
+  return {
+    title: r.title || '', firstAirYear: r.firstAirYear || '', posterUrl: r.posterUrl || '',
+    streaming: parseStreaming(r.streaming), lastChecked: r.lastChecked || null,
+    tmdbId: r.tmdbId || '', imdbId: r.imdbId || '',
+    totalSeasons: parseInt(r.totalSeasons) || 0,
+    seasonsWatched: parseSeasonsWatched(r.seasonsWatched),
+    seasons: parseSeasons(r.seasons),
+    status: r.status || '',
+    watchedBy: r.watchedBy || 'both',
+    rtScore: r.rtScore || '', imdbScore: r.imdbScore || '', mcScore: r.mcScore || '',
+  };
+}
+
+function mapRows(list, rows) {
+  return list === 'tv' ? rows.map(mapTvRow) : rows.map(mapMovieRow);
+}
+
+function setActiveItems(list, items) {
+  if (list === 'tv') tvShows = items; else movies = items;
+}
+
+async function loadView() {
+  const gen = viewGen;
+  const startMutation = mutationGen;
+  const list = getListParam();
+
+  const cached = readCache(list);
+  if (cached) { setActiveItems(list, cached); render(); }
+
+  // Apps Script occasionally answers a cold request with an HTML page instead
+  // of JSON; one retry absorbs most of those.
+  const fetchFresh = async () => {
+    const all = await sheetGetAll();
+    if (all) {
+      for (const k of ['family', 'kids', 'tv']) {
+        if (k !== list) writeCache(k, mapRows(k, all[k] || []));
+      }
+      return mapRows(list, all[list] || []);
+    }
+    return mapRows(list, await sheetGet(list));
+  };
+
   try {
-    const rows = await sheetGet();
-    tvShows = rows.map(r => ({
-      title: r.title || '', firstAirYear: r.firstAirYear || '', posterUrl: r.posterUrl || '',
-      streaming: parseStreaming(r.streaming), lastChecked: r.lastChecked || null,
-      tmdbId: r.tmdbId || '', imdbId: r.imdbId || '',
-      totalSeasons: parseInt(r.totalSeasons) || 0,
-      seasonsWatched: parseSeasonsWatched(r.seasonsWatched),
-      seasons: parseSeasons(r.seasons),
-      status: r.status || '',
-      watchedBy: r.watchedBy || 'both',
-      rtScore: r.rtScore || '', imdbScore: r.imdbScore || '', mcScore: r.mcScore || '',
-    }));
-    render();
-    if (!DEV_MODE && autoRefresh) refreshTvShows(false);
+    let fresh;
+    try { fresh = await fetchFresh(); }
+    catch(firstErr) {
+      if (gen !== viewGen) return;
+      await new Promise(r => setTimeout(r, 1500));
+      fresh = await fetchFresh();
+    }
+    if (gen !== viewGen) return;
+    if (mutationGen !== startMutation) return;
+
+    writeCache(list, fresh);
+    if (!cached || JSON.stringify(fresh) !== JSON.stringify(cached)) {
+      setActiveItems(list, fresh);
+      render();
+    }
+    if (!DEV_MODE && autoRefresh) (list === 'tv' ? refreshTvShows(false) : refreshMovies(false));
   } catch(e) {
+    console.warn('Sheet load failed for ' + list, e);
+    if (gen !== viewGen || cached) return;
     document.getElementById('watchlist').innerHTML =
-      '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Could not load TV list.<br>Check your Apps Script deployment.</div></div>';
+      '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Couldn\'t reach the sheet.<br><a href="#" onclick="loadView();return false" style="color:var(--accent)">Try again</a></div></div>';
   }
 }
 
@@ -584,13 +690,14 @@ async function fetchCsmRatings(title, year) {
 }
 
 // ── IMDB + Scores (movies) ───────────────────────────────────────────────────
-async function getImdbData(tmdbId) {
+async function getImdbData(tmdbId, fetchScores = true) {
   try {
     const res = await fetch('https://api.themoviedb.org/3/movie/' + tmdbId + '?api_key=' + TMDB_KEY);
     const data = await res.json();
     const imdbId = data.imdb_id || '';
+    const runtime = data.runtime || 0;
     let rtScore = '', imdbScore = '', mcScore = '';
-    if (OMDB_KEY && imdbId) {
+    if (fetchScores && OMDB_KEY && imdbId) {
       try {
         const omdb = await fetch('https://www.omdbapi.com/?i=' + imdbId + '&apikey=' + OMDB_KEY);
         const omdbData = await omdb.json();
@@ -603,19 +710,27 @@ async function getImdbData(tmdbId) {
         if (mc) mcScore = mc.Value.replace('/100', '');
       } catch(e) {}
     }
-    return { imdbId, rtScore, imdbScore, mcScore };
-  } catch(e) { return { imdbId: '', rtScore: '', imdbScore: '', mcScore: '' }; }
+    return { imdbId, runtime, rtScore, imdbScore, mcScore };
+  } catch(e) { return { imdbId: '', runtime: 0, rtScore: '', imdbScore: '', mcScore: '' }; }
 }
 
 // ── TMDB helpers ─────────────────────────────────────────────────────────────
-async function getMpaaRating(tmdbId) {
+// TMDB release types: 1 premiere, 2 limited theatrical, 3 theatrical, 4 digital, 5 physical, 6 TV
+async function getReleaseInfo(tmdbId) {
+  const empty = { rating: '', releaseDate: '', digitalDate: '' };
   try {
     const res = await fetch('https://api.themoviedb.org/3/movie/' + tmdbId + '/release_dates?api_key=' + TMDB_KEY);
     const data = await res.json();
     const us = (data.results || []).find(r => r.iso_3166_1 === 'US');
-    if (!us) return '';
-    return us.release_dates.find(d => d.certification)?.certification || '';
-  } catch(e) { return ''; }
+    if (!us) return empty;
+    const rd = us.release_dates || [];
+    const earliest = types => rd.filter(d => types.includes(d.type) && d.release_date).map(d => d.release_date.slice(0, 10)).sort()[0] || '';
+    return {
+      rating: rd.find(d => d.certification)?.certification || '',
+      releaseDate: earliest([3]) || earliest([2]) || earliest([1]),
+      digitalDate: earliest([4]),
+    };
+  } catch(e) { return empty; }
 }
 
 async function getTmdbId(title, year) {
@@ -800,38 +915,45 @@ async function addMovie(title, year, posterPath, tmdbId) {
     showStatus(title + ' is already on your list'); return;
   }
   const posterUrl = posterPath ? 'https://image.tmdb.org/t/p/w342' + posterPath : '';
-  const movie = { title, year, posterUrl, streaming: null, lastChecked: null, rating: '', csmRating: '', parentsRating: '', imdbId: '', rtScore: '', imdbScore: '', mcScore: '' };
+  const list = getListParam();
+  const movie = { title, year, posterUrl, streaming: null, lastChecked: null, rating: '', csmRating: '', parentsRating: '', imdbId: '', rtScore: '', imdbScore: '', mcScore: '', releaseDate: '', digitalDate: '', runtime: 0 };
   movies.unshift(movie);
+  mutationGen++;
   render();
   showStatus('Adding ' + title + '...');
 
-  const [rapidServices, tmdbServices, rating, csmRatings, imdbData] = await Promise.all([
+  const [rapidServices, tmdbServices, releaseInfo, csmRatings, imdbData] = await Promise.all([
     getStreamingAvailability(title),
     tmdbId ? getTmdbWatchProviders(tmdbId, 'movie') : Promise.resolve([]),
-    tmdbId ? getMpaaRating(tmdbId) : Promise.resolve(''),
-    activeList === 'kids' ? fetchCsmRatings(title, year) : Promise.resolve({ csmRating: '', parentsRating: '' }),
-    tmdbId ? getImdbData(tmdbId) : Promise.resolve({ imdbId: '', rtScore: '' })
+    tmdbId ? getReleaseInfo(tmdbId) : Promise.resolve({ rating: '', releaseDate: '', digitalDate: '' }),
+    list === 'kids' ? fetchCsmRatings(title, year) : Promise.resolve({ csmRating: '', parentsRating: '' }),
+    tmdbId ? getImdbData(tmdbId) : Promise.resolve({ imdbId: '', runtime: 0, rtScore: '', imdbScore: '', mcScore: '' })
   ]);
   const services = mergeStreaming(rapidServices, tmdbServices);
   movie.streaming = services;
-  movie.rating = rating;
+  movie.rating = releaseInfo.rating;
+  movie.releaseDate = releaseInfo.releaseDate;
+  movie.digitalDate = releaseInfo.digitalDate;
   movie.csmRating = csmRatings.csmRating;
   movie.parentsRating = csmRatings.parentsRating;
   movie.imdbId = imdbData.imdbId;
+  movie.runtime = imdbData.runtime;
   movie.rtScore = imdbData.rtScore;
   movie.imdbScore = imdbData.imdbScore;
   movie.mcScore = imdbData.mcScore;
   movie.lastChecked = new Date().toISOString().split('T')[0];
+  if (getListParam() === list) saveCache();
 
   try {
     await sheetAdd({
       title, year, posterUrl, streaming: JSON.stringify(services), lastChecked: movie.lastChecked,
-      rating, csmRating: movie.csmRating, parentsRating: movie.parentsRating,
-      imdbId: movie.imdbId, rtScore: movie.rtScore, imdbScore: movie.imdbScore, mcScore: movie.mcScore
-    });
+      rating: movie.rating, csmRating: movie.csmRating, parentsRating: movie.parentsRating,
+      imdbId: movie.imdbId, rtScore: movie.rtScore, imdbScore: movie.imdbScore, mcScore: movie.mcScore,
+      releaseDate: movie.releaseDate, digitalDate: movie.digitalDate, runtime: movie.runtime
+    }, list);
     showStatus(title + ' added', 'success');
   } catch(e) { showStatus('Saved locally — sheet write failed', 'error'); }
-  render();
+  if (getListParam() === list) render();
 }
 
 // ── Add TV show ──────────────────────────────────────────────────────────────
@@ -845,6 +967,7 @@ async function addTvShow(title, firstAirYear, posterPath, tmdbId, watchedBy) {
   const posterUrl = posterPath ? 'https://image.tmdb.org/t/p/w342' + posterPath : '';
   const show = { title, firstAirYear, posterUrl, streaming: null, lastChecked: null, tmdbId: String(tmdbId), imdbId: '', totalSeasons: 0, seasonsWatched: [], seasons: [], status: '', watchedBy, rtScore: '', imdbScore: '', mcScore: '' };
   tvShows.unshift(show);
+  mutationGen++;
   render();
   showStatus('Adding ' + title + '...');
 
@@ -866,6 +989,7 @@ async function addTvShow(title, firstAirYear, posterPath, tmdbId, watchedBy) {
     show.imdbScore = scores.imdbScore;
     show.mcScore = scores.mcScore;
   }
+  if (activeMode === 'tv') saveCache();
 
   try {
     await sheetAdd({
@@ -874,21 +998,41 @@ async function addTvShow(title, firstAirYear, posterPath, tmdbId, watchedBy) {
       totalSeasons: show.totalSeasons, seasonsWatched: show.seasonsWatched.join(','),
       seasons: JSON.stringify(show.seasons),
       status: show.status, watchedBy, rtScore: show.rtScore, imdbScore: show.imdbScore, mcScore: show.mcScore
-    });
+    }, 'tv');
     showStatus(title + ' added', 'success');
   } catch(e) { showStatus('Saved locally — sheet write failed', 'error'); }
-  render();
+  if (activeMode === 'tv') render();
 }
 
 // ── Remove ───────────────────────────────────────────────────────────────────
 let undoTimer = null;
 let undoData = null;
 
+// If a removal is still inside its undo window, commit it to the sheet now.
+// Called before switching lists and on page hide so the row can't resurrect.
+function flushPendingRemove(useBeacon) {
+  if (!undoData) return;
+  clearTimeout(undoTimer);
+  const { item, list } = undoData;
+  undoData = null;
+  const body = JSON.stringify({ title: item.title });
+  if (useBeacon && navigator.sendBeacon) {
+    navigator.sendBeacon(SCRIPT_URL + '?action=remove&list=' + list, body);
+  } else {
+    sheetRemove({ title: item.title }, list);
+  }
+  const el = document.getElementById('status');
+  el.classList.remove('visible', 'has-undo');
+}
+
 async function removeItem(title) {
   // Find the card element and animate it out
   const cards = document.querySelectorAll('.movie-card');
   let cardEl = null;
   cards.forEach(c => { if (c.querySelector('.movie-title a')?.textContent === title || c.querySelector('.movie-title')?.textContent === title) cardEl = c; });
+
+  // A second removal inside the first one's undo window commits the first.
+  flushPendingRemove();
 
   // Store item for undo
   let removed, removedIdx;
@@ -903,6 +1047,7 @@ async function removeItem(title) {
     removed = movies[removedIdx];
     movies.splice(removedIdx, 1);
   }
+  saveCache();
 
   // Animate card out, then render
   if (cardEl) {
@@ -912,16 +1057,16 @@ async function removeItem(title) {
   render();
 
   // Show undo toast
-  clearTimeout(undoTimer);
-  undoData = { item: removed, idx: removedIdx, mode: activeMode, list: activeList };
+  const list = getListParam();
+  undoData = { item: removed, idx: removedIdx, mode: activeMode, list };
   const el = document.getElementById('status');
-  el.innerHTML = 'Removed ' + title + ' <button class="undo-btn" onclick="undoRemove()">Undo</button>';
+  el.innerHTML = 'Removed ' + esc(title) + ' <button class="undo-btn" onclick="undoRemove()">Undo</button>';
   el.className = 'status visible has-undo';
   clearTimeout(statusTimer);
   undoTimer = setTimeout(() => {
-    // Actually delete from sheet after undo window expires
-    sheetRemove({ title });
+    if (!undoData || undoData.item !== removed) return;
     undoData = null;
+    sheetRemove({ title }, list);
     el.classList.remove('visible', 'has-undo');
   }, 5000);
 }
@@ -930,14 +1075,11 @@ function undoRemove() {
   if (!undoData) return;
   clearTimeout(undoTimer);
   const { item, idx, mode, list } = undoData;
-  if (mode === 'tv') {
-    tvShows.splice(idx, 0, item);
-  } else {
-    movies.splice(idx, 0, item);
-  }
   undoData = null;
-  render();
-  showStatus(item.title + ' restored', 'success');
+  if (mode === 'tv') tvShows.splice(idx, 0, item);
+  else movies.splice(idx, 0, item);
+  if (getListParam() === list) { saveCache(); render(); }
+  showStatus(esc(item.title) + ' restored', 'success');
 }
 
 // ── Watched-by picker ────────────────────────────────────────────────────────
@@ -961,8 +1103,9 @@ function showWatchedByPicker(title, event) {
       e.stopPropagation();
       show.watchedBy = opt;
       picker.remove();
+      saveCache();
       render();
-      await sheetUpdate({ title, watchedBy: opt });
+      await sheetUpdate({ title, watchedBy: opt }, 'tv');
     };
     picker.appendChild(btn);
   });
@@ -983,6 +1126,7 @@ async function toggleSeason(title, seasonNum) {
   if (idx >= 0) { show.seasonsWatched.splice(idx, 1); }
   else { show.seasonsWatched.push(seasonNum); show.seasonsWatched.sort((a, b) => a - b); }
   const nowCaughtUp = isCaughtUp(show);
+  saveCache();
 
   if (!wasCaughtUp && nowCaughtUp) {
     // Update checkbox without full re-render so card stays in place
@@ -1009,7 +1153,7 @@ async function toggleSeason(title, seasonNum) {
   } else {
     render();
   }
-  await sheetUpdate({ title, seasonsWatched: show.seasonsWatched.join(',') });
+  await sheetUpdate({ title, seasonsWatched: show.seasonsWatched.join(',') }, 'tv');
 }
 
 function toggleSeasonList(title) {
@@ -1027,21 +1171,29 @@ function handleRefresh() {
   else refreshMovies(true);
 }
 
-async function refreshOneMovie(movie, today) {
+async function refreshOneMovie(movie, today, list) {
   try {
     const tmdbId = await getTmdbId(movie.title, movie.year);
-    const [rapidServices, tmdbServices, rating, imdbData, csmData] = await Promise.all([
+    const needRelease = !movie.rating || !movie.releaseDate;
+    const needMeta = !movie.imdbId || !movie.runtime;
+    const needScores = !movie.imdbScore;
+    const [rapidServices, tmdbServices, releaseInfo, imdbData, csmData] = await Promise.all([
       getStreamingAvailability(movie.title),
       tmdbId ? getTmdbWatchProviders(tmdbId, 'movie') : Promise.resolve([]),
-      (!movie.rating && tmdbId) ? getMpaaRating(tmdbId) : Promise.resolve(''),
-      ((!movie.imdbId || !movie.imdbScore) && tmdbId) ? getImdbData(tmdbId) : Promise.resolve(null),
-      (activeList === 'kids' && !movie.csmRating) ? fetchCsmRatings(movie.title, movie.year) : Promise.resolve(null),
+      (needRelease && tmdbId) ? getReleaseInfo(tmdbId) : Promise.resolve(null),
+      ((needMeta || needScores) && tmdbId) ? getImdbData(tmdbId, needScores) : Promise.resolve(null),
+      (list === 'kids' && !movie.csmRating) ? fetchCsmRatings(movie.title, movie.year) : Promise.resolve(null),
     ]);
     movie.streaming = mergeStreaming(rapidServices, tmdbServices);
     movie.lastChecked = today;
-    if (rating) movie.rating = rating;
+    if (releaseInfo) {
+      movie.rating = releaseInfo.rating || movie.rating;
+      movie.releaseDate = releaseInfo.releaseDate || movie.releaseDate;
+      movie.digitalDate = releaseInfo.digitalDate || movie.digitalDate;
+    }
     if (imdbData) {
       movie.imdbId = imdbData.imdbId || movie.imdbId;
+      movie.runtime = imdbData.runtime || movie.runtime;
       movie.rtScore = imdbData.rtScore || movie.rtScore;
       movie.imdbScore = imdbData.imdbScore || movie.imdbScore;
       movie.mcScore = imdbData.mcScore || movie.mcScore;
@@ -1050,16 +1202,18 @@ async function refreshOneMovie(movie, today) {
       movie.csmRating = csmData.csmRating || movie.csmRating;
       movie.parentsRating = csmData.parentsRating || movie.parentsRating;
     }
-    await sheetUpdate({ title: movie.title, streaming: JSON.stringify(movie.streaming), lastChecked: today, rating: movie.rating || '', csmRating: movie.csmRating || '', parentsRating: movie.parentsRating || '', imdbId: movie.imdbId || '', rtScore: movie.rtScore || '', imdbScore: movie.imdbScore || '', mcScore: movie.mcScore || '' });
+    await sheetUpdate({ title: movie.title, streaming: JSON.stringify(movie.streaming), lastChecked: today, rating: movie.rating || '', csmRating: movie.csmRating || '', parentsRating: movie.parentsRating || '', imdbId: movie.imdbId || '', rtScore: movie.rtScore || '', imdbScore: movie.imdbScore || '', mcScore: movie.mcScore || '', releaseDate: movie.releaseDate || '', digitalDate: movie.digitalDate || '', runtime: movie.runtime || '' }, list);
   } catch(e) { console.warn('Refresh failed for: ' + movie.title, e); }
 }
 
 async function refreshMovies(force) {
   if (isRefreshing) return;
+  const gen = viewGen;
+  const list = getListParam();
   isRefreshing = true;
   document.getElementById('refreshBtn').classList.add('spinning');
   const today = new Date().toISOString().split('T')[0];
-  const stale = movies.filter(m => force || !m.lastChecked || m.lastChecked < today || !m.rating || !m.imdbScore || (activeList === 'kids' && (!m.csmRating || !m.parentsRating)));
+  const stale = movies.filter(m => force || !m.lastChecked || m.lastChecked < today || !m.rating || !m.imdbScore || (list === 'kids' && (!m.csmRating || !m.parentsRating)));
   if (!stale.length) {
     showStatus('All up to date', 'success');
     isRefreshing = false;
@@ -1071,13 +1225,21 @@ async function refreshMovies(force) {
     let done = 0;
     const BATCH = 5;
     for (let i = 0; i < stale.length; i += BATCH) {
-      await Promise.all(stale.slice(i, i + BATCH).map(async m => { await refreshOneMovie(m, today); done++; showStatus('Updating ' + done + '/' + stale.length + ' movies...'); }));
+      await Promise.all(stale.slice(i, i + BATCH).map(async m => {
+        await refreshOneMovie(m, today, list);
+        done++;
+        if (gen === viewGen) showStatus('Updating ' + done + '/' + stale.length + ' movies...');
+      }));
+      if (gen !== viewGen) return;
     }
+    saveCache();
     render();
     showStatus('All ' + stale.length + ' movies updated', 'success');
   } finally {
-    isRefreshing = false;
-    document.getElementById('refreshBtn').classList.remove('spinning');
+    if (gen === viewGen) {
+      isRefreshing = false;
+      document.getElementById('refreshBtn').classList.remove('spinning');
+    }
   }
 }
 
@@ -1102,16 +1264,17 @@ async function refreshOneTvShow(show, today) {
       show.imdbScore = scores.imdbScore || show.imdbScore;
       show.mcScore = scores.mcScore || show.mcScore;
     }
-    await sheetUpdate({ title: show.title, streaming: JSON.stringify(show.streaming), lastChecked: today, totalSeasons: show.totalSeasons, seasons: JSON.stringify(show.seasons), status: show.status, imdbId: show.imdbId || '', rtScore: show.rtScore || '', imdbScore: show.imdbScore || '', mcScore: show.mcScore || '' });
+    await sheetUpdate({ title: show.title, streaming: JSON.stringify(show.streaming), lastChecked: today, totalSeasons: show.totalSeasons, seasons: JSON.stringify(show.seasons), status: show.status, imdbId: show.imdbId || '', rtScore: show.rtScore || '', imdbScore: show.imdbScore || '', mcScore: show.mcScore || '' }, 'tv');
   } catch(e) { console.warn('Refresh failed for: ' + show.title, e); }
 }
 
 async function refreshTvShows(force) {
   if (isRefreshing) return;
+  const gen = viewGen;
   isRefreshing = true;
   document.getElementById('refreshBtn').classList.add('spinning');
   const today = new Date().toISOString().split('T')[0];
-  const stale = tvShows.filter(s => force || !s.lastChecked || s.lastChecked < today || !s.imdbScore);
+  const stale = tvShows.filter(s => force || !s.lastChecked || s.lastChecked < today || !s.imdbScore || !(s.seasons && s.seasons.length));
   if (!stale.length) {
     showStatus('All up to date', 'success');
     isRefreshing = false;
@@ -1123,13 +1286,21 @@ async function refreshTvShows(force) {
     let done = 0;
     const BATCH = 5;
     for (let i = 0; i < stale.length; i += BATCH) {
-      await Promise.all(stale.slice(i, i + BATCH).map(async s => { await refreshOneTvShow(s, today); done++; showStatus('Updating ' + done + '/' + stale.length + ' shows...'); }));
+      await Promise.all(stale.slice(i, i + BATCH).map(async s => {
+        await refreshOneTvShow(s, today);
+        done++;
+        if (gen === viewGen) showStatus('Updating ' + done + '/' + stale.length + ' shows...');
+      }));
+      if (gen !== viewGen) return;
     }
+    saveCache();
     render();
     showStatus('All ' + stale.length + ' shows updated', 'success');
   } finally {
-    isRefreshing = false;
-    document.getElementById('refreshBtn').classList.remove('spinning');
+    if (gen === viewGen) {
+      isRefreshing = false;
+      document.getElementById('refreshBtn').classList.remove('spinning');
+    }
   }
 }
 
@@ -1148,6 +1319,18 @@ function costLabel(type) {
   if (type === 'buy') return '<span class="badge-cost">BUY</span>';
   if (type === 'free') return '<span class="badge-cost">FREE</span>';
   return '';
+}
+
+// For a movie that isn't on any tracked service, say when it will be if we know.
+function availabilityBadge(m) {
+  const today = new Date().toISOString().split('T')[0];
+  if (m.releaseDate && m.releaseDate > today) return '<span class="badge badge-upcoming">In theaters ' + fmtDate(m.releaseDate) + '</span>';
+  if (m.digitalDate && m.digitalDate > today) return '<span class="badge badge-upcoming">Digital ' + fmtDate(m.digitalDate) + '</span>';
+  if (m.releaseDate && !(m.digitalDate && m.digitalDate <= today)) {
+    const daysOut = (new Date(today) - new Date(m.releaseDate)) / 86400000;
+    if (daysOut <= 120) return '<span class="badge badge-none">In theaters now</span>';
+  }
+  return '<span class="badge badge-none">Not streaming</span>';
 }
 
 function renderStreamingBadges(streaming) {
@@ -1193,25 +1376,27 @@ function renderMovieWatchlist() {
     return;
   }
   el.innerHTML = sortedMovies().map(m => {
+    const safeTitle = esc(m.title);
     let poster = m.posterUrl
-      ? '<img class="movie-poster" src="' + m.posterUrl + '" alt="' + m.title + '" loading="lazy">'
+      ? '<img class="movie-poster" src="' + m.posterUrl + '" alt="' + safeTitle + '" loading="lazy">'
       : '<div class="movie-poster-placeholder">🎬</div>';
     if (m.imdbId) poster = '<a href="https://www.imdb.com/title/' + m.imdbId + '" target="_blank" rel="noopener">' + poster + '</a>';
     const titleHtml = m.imdbId
-      ? '<a href="https://www.imdb.com/title/' + m.imdbId + '" target="_blank" rel="noopener">' + m.title + '</a>'
-      : m.title;
+      ? '<a href="https://www.imdb.com/title/' + m.imdbId + '" target="_blank" rel="noopener">' + safeTitle + '</a>'
+      : safeTitle;
     const notStreaming = isNotStreaming(m);
+    const runtime = fmtRuntime(m.runtime);
     return '<div class="movie-card' + (notStreaming ? ' not-streaming' : '') + '">' +
       '<button class="remove-btn" onclick="removeItem(' + JSON.stringify(m.title).replace(/"/g, '&quot;') + ')">×</button>' +
       renderScoreOverlay(m) + poster +
       '<div class="movie-info">' +
         '<div class="movie-title">' + titleHtml + '</div>' +
-        '<div class="movie-year">' + m.year +
+        '<div class="movie-year">' + m.year + (runtime ? ' · ' + runtime : '') +
           (m.rating ? '<span class="rating-badge">' + m.rating + '</span>' : '') +
           (activeList === 'kids' && m.csmRating ? '<span class="csm-badge">CSM ' + m.csmRating + '</span>' : '') +
           (activeList === 'kids' && m.parentsRating ? '<span class="csm-badge">P ' + m.parentsRating + '</span>' : '') +
         '</div>' +
-        '<div class="streaming-badges">' + renderStreamingBadges(m.streaming) + '</div>' +
+        '<div class="streaming-badges">' + (notStreaming ? availabilityBadge(m) : renderStreamingBadges(m.streaming)) + '</div>' +
       '</div></div>';
   }).join('');
 }
@@ -1237,14 +1422,15 @@ function renderTvWatchlist() {
     const airedSeasons = (s.seasons || []).filter(ss => ss.aired);
     const watchedCount = s.seasonsWatched.filter(n => airedSeasons.some(ss => ss.number === n)).length;
 
+    const safeTitle = esc(s.title);
     let poster = s.posterUrl
-      ? '<img class="movie-poster" src="' + s.posterUrl + '" alt="' + s.title + '" loading="lazy">'
+      ? '<img class="movie-poster" src="' + s.posterUrl + '" alt="' + safeTitle + '" loading="lazy">'
       : '<div class="movie-poster-placeholder">📺</div>';
     if (s.imdbId) poster = '<a href="https://www.imdb.com/title/' + s.imdbId + '" target="_blank" rel="noopener">' + poster + '</a>';
 
     const titleHtml = s.imdbId
-      ? '<a href="https://www.imdb.com/title/' + s.imdbId + '" target="_blank" rel="noopener">' + s.title + '</a>'
-      : s.title;
+      ? '<a href="https://www.imdb.com/title/' + s.imdbId + '" target="_blank" rel="noopener">' + safeTitle + '</a>'
+      : safeTitle;
 
     let statusBadge = '';
     if (caughtUp) statusBadge = '<span class="show-status-badge status-caught-up">Caught up</span>';
@@ -1261,7 +1447,7 @@ function renderTvWatchlist() {
     }
 
     const titleJs = JSON.stringify(s.title).replace(/"/g, '&quot;');
-    const titleAttr = s.title.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    const titleAttr = safeTitle;
     const chevron = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 18l6-6-6-6"/></svg>';
     const isExpanded = expandedShows.has(s.title);
     const seasonToggle = airedSeasons.length > 0
@@ -1314,8 +1500,10 @@ document.addEventListener('click', e => {
   if (!e.target.closest('.search-wrap') && !e.target.closest('.results')) hideResults();
 });
 
+window.addEventListener('pagehide', () => flushPendingRemove(true));
+
 document.getElementById('autoRefreshToggle').checked = autoRefresh;
-loadList();
+loadView();
 </script>
 </body>
 </html>
