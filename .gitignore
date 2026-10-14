@@ -5,3 +5,7 @@
 
 # macOS
 .DS_Store
+
+# Wrangler local state
+.wrangler/
+node_modules/

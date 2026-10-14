@@ -236,10 +236,8 @@
 <div class="status" id="status"></div>
 
 <script>
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxJ_-P5KBGLdoB6f0P1n0qYo7uXb2RDW-4GaT23FYWLO2fuKtXlm13PoeCWVO7DhjPvCg/exec';
-const RAPID_KEY  = '6843182acdmsh3606361dc74ed24p1b3afejsnf8eccf80e039';
-const TMDB_KEY   = 'cd13f611fe266eabec6fd4bd6495b74e';
-const OMDB_KEY   = 'd10ed96a';
+// All API keys and the sheet backend live in the Cloudflare Worker (worker/), not in this page.
+const API = 'https://watchlist-proxy.bryan-235.workers.dev';
 const REFRESH_HOURS = 24;
 const DEV_MODE = new URLSearchParams(window.location.search).has('dev');
 let autoRefresh = true;
@@ -448,7 +446,7 @@ function getListParam() {
 }
 
 async function sheetGet(list = getListParam()) {
-  const res = await fetch(SCRIPT_URL + '?action=get&list=' + list, { redirect: 'follow' });
+  const res = await fetch(API + '/sheet?action=get&list=' + list);
   return res.json();
 }
 
@@ -460,7 +458,7 @@ let allSupported = true;
 async function sheetGetAll() {
   if (!allSupported) return null;
   try {
-    const res = await fetch(SCRIPT_URL + '?action=all', { redirect: 'follow' });
+    const res = await fetch(API + '/sheet?action=all');
     const data = await res.json();
     if (data && !Array.isArray(data) && Array.isArray(data.family)) return data;
   } catch(e) {}
@@ -468,22 +466,55 @@ async function sheetGetAll() {
   return null;
 }
 
-async function sheetAdd(data, list = getListParam()) {
-  await fetch(SCRIPT_URL + '?action=add&list=' + list, {
-    method: 'POST', mode: 'no-cors', body: JSON.stringify(data)
+// ── Passphrase ────────────────────────────────────────────────────────────────
+// Changing a list needs the family passphrase. It's asked for once per device, then remembered.
+const PASS_STORAGE_KEY = 'watchlistPass';
+let passInMemory = '';
+
+function getPass() {
+  try { return localStorage.getItem(PASS_STORAGE_KEY) || passInMemory; } catch(e) { return passInMemory; }
+}
+
+function setPass(value) {
+  passInMemory = value;
+  try { value ? localStorage.setItem(PASS_STORAGE_KEY, value) : localStorage.removeItem(PASS_STORAGE_KEY); } catch(e) {}
+}
+
+// Call before any change the user makes. Returns false if they cancel or get it wrong.
+async function ensurePass() {
+  if (getPass()) return true;
+  const entered = prompt('Enter the family passphrase to make changes:');
+  if (!entered) return false;
+  try {
+    const res = await fetch(API + '/auth', { method: 'POST', body: JSON.stringify({ pass: entered }) });
+    if (res.ok) { setPass(entered); return true; }
+    showStatus(res.status === 401 ? 'Wrong passphrase' : 'Couldn\'t check the passphrase — try again', 'error');
+  } catch(e) { showStatus('Couldn\'t check the passphrase — try again', 'error'); }
+  return false;
+}
+
+// Without a saved passphrase (e.g. a background refresh on a view-only device) the change stays
+// local to this device.
+async function sheetWrite(action, data, list) {
+  const pass = getPass();
+  if (!pass) return;
+  const res = await fetch(API + '/sheet?action=' + action + '&list=' + list, {
+    method: 'POST', body: JSON.stringify({ pass, data })
   });
+  if (res.status === 401) { setPass(''); throw new Error('Wrong passphrase'); }
+  if (!res.ok) throw new Error('Sheet write failed: ' + res.status);
+}
+
+async function sheetAdd(data, list = getListParam()) {
+  return sheetWrite('add', data, list);
 }
 
 async function sheetUpdate(data, list = getListParam()) {
-  await fetch(SCRIPT_URL + '?action=update&list=' + list, {
-    method: 'POST', mode: 'no-cors', body: JSON.stringify(data)
-  });
+  return sheetWrite('update', data, list);
 }
 
 async function sheetRemove(data, list = getListParam()) {
-  await fetch(SCRIPT_URL + '?action=remove&list=' + list, {
-    method: 'POST', mode: 'no-cors', body: JSON.stringify(data)
-  });
+  return sheetWrite('remove', data, list);
 }
 
 // ── Mode switching ───────────────────────────────────────────────────────────
@@ -635,9 +666,7 @@ async function loadView() {
 async function getStreamingAvailability(title) {
   const params = new URLSearchParams({ title, country: 'us', show_type: 'movie', output_language: 'en' });
   try {
-    const res = await fetch('https://streaming-availability.p.rapidapi.com/shows/search/title?' + params, {
-      headers: { 'X-RapidAPI-Key': RAPID_KEY, 'X-RapidAPI-Host': 'streaming-availability.p.rapidapi.com' }
-    });
+    const res = await fetch(API + '/streaming?' + params);
     const data = await res.json();
     if (!data || !data.length) return [];
     const options = data[0].streamingOptions?.us || [];
@@ -656,7 +685,7 @@ async function getStreamingAvailability(title) {
 async function getTmdbWatchProviders(tmdbId, mediaType) {
   const path = mediaType === 'tv' ? 'tv' : 'movie';
   try {
-    const res = await fetch('https://api.themoviedb.org/3/' + path + '/' + tmdbId + '/watch/providers?api_key=' + TMDB_KEY);
+    const res = await fetch(API + '/tmdb/' + path + '/' + tmdbId + '/watch/providers');
     const data = await res.json();
     const us = data.results?.US || {};
     const catMap = { flatrate: 'subscription', free: 'free', rent: 'rent', buy: 'buy' };
@@ -682,8 +711,8 @@ function mergeStreaming(rapidServices, tmdbServices) {
 // ── CSM Rating ────────────────────────────────────────────────────────────────
 async function fetchCsmRatings(title, year) {
   try {
-    const url = SCRIPT_URL + '?action=csm&title=' + encodeURIComponent(title) + '&year=' + encodeURIComponent(year || '');
-    const res = await fetch(url, { redirect: 'follow' });
+    const url = API + '/sheet?action=csm&title=' + encodeURIComponent(title) + '&year=' + encodeURIComponent(year || '');
+    const res = await fetch(url);
     const data = await res.json();
     return { csmRating: data.csmRating || '', parentsRating: data.parentsRating || '' };
   } catch(e) { return { csmRating: '', parentsRating: '' }; }
@@ -692,14 +721,14 @@ async function fetchCsmRatings(title, year) {
 // ── IMDB + Scores (movies) ───────────────────────────────────────────────────
 async function getImdbData(tmdbId, fetchScores = true) {
   try {
-    const res = await fetch('https://api.themoviedb.org/3/movie/' + tmdbId + '?api_key=' + TMDB_KEY);
+    const res = await fetch(API + '/tmdb/movie/' + tmdbId);
     const data = await res.json();
     const imdbId = data.imdb_id || '';
     const runtime = data.runtime || 0;
     let rtScore = '', imdbScore = '', mcScore = '';
-    if (fetchScores && OMDB_KEY && imdbId) {
+    if (fetchScores && imdbId) {
       try {
-        const omdb = await fetch('https://www.omdbapi.com/?i=' + imdbId + '&apikey=' + OMDB_KEY);
+        const omdb = await fetch(API + '/omdb?i=' + imdbId);
         const omdbData = await omdb.json();
         const ratings = omdbData.Ratings || [];
         const rt = ratings.find(r => r.Source === 'Rotten Tomatoes');
@@ -719,7 +748,7 @@ async function getImdbData(tmdbId, fetchScores = true) {
 async function getReleaseInfo(tmdbId) {
   const empty = { rating: '', releaseDate: '', digitalDate: '' };
   try {
-    const res = await fetch('https://api.themoviedb.org/3/movie/' + tmdbId + '/release_dates?api_key=' + TMDB_KEY);
+    const res = await fetch(API + '/tmdb/movie/' + tmdbId + '/release_dates');
     const data = await res.json();
     const us = (data.results || []).find(r => r.iso_3166_1 === 'US');
     if (!us) return empty;
@@ -735,7 +764,7 @@ async function getReleaseInfo(tmdbId) {
 
 async function getTmdbId(title, year) {
   try {
-    const res = await fetch('https://api.themoviedb.org/3/search/movie?api_key=' + TMDB_KEY + '&query=' + encodeURIComponent(title) + (year ? '&year=' + year : '') + '&language=en-US&page=1');
+    const res = await fetch(API + '/tmdb/search/movie?query=' + encodeURIComponent(title) + (year ? '&year=' + year : '') + '&language=en-US&page=1');
     const data = await res.json();
     return data.results?.[0]?.id || null;
   } catch(e) { return null; }
@@ -744,7 +773,7 @@ async function getTmdbId(title, year) {
 // ── TV-specific APIs ─────────────────────────────────────────────────────────
 async function getSeasonAiredCount(tmdbId, seasonNum) {
   try {
-    const res = await fetch('https://api.themoviedb.org/3/tv/' + tmdbId + '/season/' + seasonNum + '?api_key=' + TMDB_KEY);
+    const res = await fetch(API + '/tmdb/tv/' + tmdbId + '/season/' + seasonNum);
     const data = await res.json();
     const today = new Date().toISOString().split('T')[0];
     const episodes = data.episodes || [];
@@ -754,7 +783,7 @@ async function getSeasonAiredCount(tmdbId, seasonNum) {
 
 async function getTvDetails(tmdbId) {
   try {
-    const res = await fetch('https://api.themoviedb.org/3/tv/' + tmdbId + '?api_key=' + TMDB_KEY);
+    const res = await fetch(API + '/tmdb/tv/' + tmdbId);
     const data = await res.json();
     const today = new Date().toISOString().split('T')[0];
     const seasons = (data.seasons || [])
@@ -787,16 +816,16 @@ async function getTvDetails(tmdbId) {
 
 async function getTvExternalIds(tmdbId) {
   try {
-    const res = await fetch('https://api.themoviedb.org/3/tv/' + tmdbId + '/external_ids?api_key=' + TMDB_KEY);
+    const res = await fetch(API + '/tmdb/tv/' + tmdbId + '/external_ids');
     const data = await res.json();
     return data.imdb_id || '';
   } catch(e) { return ''; }
 }
 
 async function getOmdbScores(imdbId) {
-  if (!OMDB_KEY || !imdbId) return { rtScore: '', imdbScore: '', mcScore: '' };
+  if (!imdbId) return { rtScore: '', imdbScore: '', mcScore: '' };
   try {
-    const res = await fetch('https://www.omdbapi.com/?i=' + imdbId + '&apikey=' + OMDB_KEY);
+    const res = await fetch(API + '/omdb?i=' + imdbId);
     const data = await res.json();
     const ratings = data.Ratings || [];
     const rt = ratings.find(r => r.Source === 'Rotten Tomatoes');
@@ -827,7 +856,7 @@ function getUpcomingSeason(show) {
 async function searchMovies(query) {
   if (!query.trim()) { hideResults(); return; }
   try {
-    const res = await fetch('https://api.themoviedb.org/3/search/movie?api_key=' + TMDB_KEY + '&query=' + encodeURIComponent(query) + '&language=en-US&page=1');
+    const res = await fetch(API + '/tmdb/search/movie?query=' + encodeURIComponent(query) + '&language=en-US&page=1');
     const data = await res.json();
     showResults((data.results || []).slice(0, 4));
   } catch(e) { showStatus('Search failed', 'error'); }
@@ -836,7 +865,7 @@ async function searchMovies(query) {
 async function searchTvShows(query) {
   if (!query.trim()) { hideResults(); return; }
   try {
-    const res = await fetch('https://api.themoviedb.org/3/search/tv?api_key=' + TMDB_KEY + '&query=' + encodeURIComponent(query) + '&language=en-US&page=1');
+    const res = await fetch(API + '/tmdb/search/tv?query=' + encodeURIComponent(query) + '&language=en-US&page=1');
     const data = await res.json();
     showResults((data.results || []).slice(0, 4));
   } catch(e) { showStatus('Search failed', 'error'); }
@@ -909,6 +938,7 @@ document.getElementById('results').addEventListener('click', function(e) {
 
 // ── Add movie ────────────────────────────────────────────────────────────────
 async function addMovie(title, year, posterPath, tmdbId) {
+  if (!(await ensurePass())) return;
   hideResults();
   document.getElementById('searchInput').value = '';
   if (movies.find(m => m.title.toLowerCase() === title.toLowerCase())) {
@@ -958,6 +988,7 @@ async function addMovie(title, year, posterPath, tmdbId) {
 
 // ── Add TV show ──────────────────────────────────────────────────────────────
 async function addTvShow(title, firstAirYear, posterPath, tmdbId, watchedBy) {
+  if (!(await ensurePass())) return;
   hideResults();
   document.getElementById('searchInput').value = '';
   if (tvShows.find(s => s.title.toLowerCase() === title.toLowerCase())) {
@@ -1015,9 +1046,9 @@ function flushPendingRemove(useBeacon) {
   clearTimeout(undoTimer);
   const { item, list } = undoData;
   undoData = null;
-  const body = JSON.stringify({ title: item.title });
-  if (useBeacon && navigator.sendBeacon) {
-    navigator.sendBeacon(SCRIPT_URL + '?action=remove&list=' + list, body);
+  const pass = getPass();
+  if (useBeacon && navigator.sendBeacon && pass) {
+    navigator.sendBeacon(API + '/sheet?action=remove&list=' + list, JSON.stringify({ pass, data: { title: item.title } }));
   } else {
     sheetRemove({ title: item.title }, list);
   }
@@ -1026,6 +1057,7 @@ function flushPendingRemove(useBeacon) {
 }
 
 async function removeItem(title) {
+  if (!(await ensurePass())) return;
   // Find the card element and animate it out
   const cards = document.querySelectorAll('.movie-card');
   let cardEl = null;
@@ -1101,8 +1133,9 @@ function showWatchedByPicker(title, event) {
     btn.textContent = labels[opt];
     btn.onclick = async (e) => {
       e.stopPropagation();
-      show.watchedBy = opt;
       picker.remove();
+      if (!(await ensurePass())) return;
+      show.watchedBy = opt;
       saveCache();
       render();
       await sheetUpdate({ title, watchedBy: opt }, 'tv');
@@ -1121,6 +1154,7 @@ function showWatchedByPicker(title, event) {
 async function toggleSeason(title, seasonNum) {
   const show = tvShows.find(s => s.title === title);
   if (!show) return;
+  if (!(await ensurePass())) { render(); return; }
   const wasCaughtUp = isCaughtUp(show);
   const idx = show.seasonsWatched.indexOf(seasonNum);
   if (idx >= 0) { show.seasonsWatched.splice(idx, 1); }

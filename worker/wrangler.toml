@@ -1,0 +1,22 @@
+# Movie Watchlist API proxy. Deploy from this folder: npx wrangler deploy
+# Secrets are set separately with `npx wrangler secret put <NAME>` (see src/index.js).
+name = "watchlist-proxy"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+# Per-IP limits. The page's refresh fires ~6 lookups per title in batches of 5.
+[[ratelimits]]
+name = "API_LIMITER"
+namespace_id = "1001"
+simple = { limit = 600, period = 60 }
+
+[[ratelimits]]
+name = "STREAMING_LIMITER"
+namespace_id = "1002"
+simple = { limit = 120, period = 60 }
+
+# Passphrase checks and sheet writes: low enough to stop guessing.
+[[ratelimits]]
+name = "WRITE_LIMITER"
+namespace_id = "1003"
+simple = { limit = 30, period = 60 }
