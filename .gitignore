@@ -1,0 +1,7 @@
+# This repo is PUBLIC (and served by GitHub Pages). Never commit credentials.
+
+# Local tooling (settings.local.json holds API URLs and keys in allowlisted commands)
+.claude/
+
+# macOS
+.DS_Store
